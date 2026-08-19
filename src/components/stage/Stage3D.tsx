@@ -96,11 +96,6 @@ export const Stage3D: React.FC = () => {
 
   // Mouse Interaction: Orbit, Pan, and Zoom
   const handleMouseDown = (e: React.MouseEvent) => {
-    // Only drag if clicking on the background container
-    if (e.target !== containerRef.current && !(e.target as HTMLElement).classList.contains('scene-backdrop')) {
-      return;
-    }
-
     if (e.button === 0 && !e.shiftKey && !e.altKey) {
       setDragMode('rotate');
     } else {
@@ -110,28 +105,40 @@ export const Stage3D: React.FC = () => {
     lastMousePos.current = { x: e.clientX, y: e.clientY };
   };
 
-  const handleMouseMove = (e: React.MouseEvent) => {
+  useEffect(() => {
     if (!isDragging) return;
 
-    const dx = e.clientX - lastMousePos.current.x;
-    const dy = e.clientY - lastMousePos.current.y;
-    lastMousePos.current = { x: e.clientX, y: e.clientY };
+    const onMouseMove = (e: MouseEvent) => {
+      const dx = e.clientX - lastMousePos.current.x;
+      const dy = e.clientY - lastMousePos.current.y;
+      lastMousePos.current = { x: e.clientX, y: e.clientY };
 
-    if (dragMode === 'rotate') {
-      const nextX = Math.max(-88, Math.min(88, threeDConfig.rotateX - dy * 0.35));
-      const nextY = (threeDConfig.rotateY + dx * 0.35) % 360;
-      setThreeDConfig({ rotateX: nextX, rotateY: nextY, autoRotate: false });
-    } else {
-      setThreeDConfig({
-        panX: threeDConfig.panX + dx,
-        panY: threeDConfig.panY + dy,
-      });
-    }
-  };
+      const config = useProjectStore.getState().threeDConfig;
 
-  const handleMouseUp = () => {
-    setIsDragging(false);
-  };
+      if (dragMode === 'rotate') {
+        const nextX = Math.max(-88, Math.min(88, config.rotateX - dy * 0.4));
+        const nextY = (config.rotateY + dx * 0.4) % 360;
+        setThreeDConfig({ rotateX: nextX, rotateY: nextY, autoRotate: false });
+      } else {
+        setThreeDConfig({
+          panX: config.panX + dx,
+          panY: config.panY + dy,
+        });
+      }
+    };
+
+    const onMouseUp = () => {
+      setIsDragging(false);
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [isDragging, dragMode, setThreeDConfig]);
 
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
@@ -201,9 +208,6 @@ export const Stage3D: React.FC = () => {
     <div
       ref={containerRef}
       onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
       onWheel={handleWheel}
       onContextMenu={(e) => e.preventDefault()}
       className="w-full h-full relative overflow-hidden flex items-center justify-center select-none bg-[#06070a] cursor-grab active:cursor-grabbing scene-backdrop"
