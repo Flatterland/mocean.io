@@ -1,7 +1,7 @@
 import { Muxer, ArrayBufferTarget } from 'mp4-muxer';
 import { CanvasSettings, ExportSettings } from '../types/project';
 import { Layer } from '../types/layer';
-import { renderFrame } from './renderer';
+import { renderFrame, getCachedVideo } from './renderer';
 
 export interface ExportProgress {
   currentFrame: number;
@@ -102,6 +102,48 @@ export class MoceanExporter {
     );
   }
 
+  private async prepareVideoLayers(layers: Layer[], currentTime: number) {
+    const promises: Promise<void>[] = [];
+
+    for (const layer of layers) {
+      if (layer.type === 'video' && layer.visible && layer.video?.src) {
+        if (currentTime >= layer.startTime && currentTime <= layer.endTime) {
+          const video = getCachedVideo(layer.video.src);
+          const localTime = Math.max(0, currentTime - layer.startTime);
+          const targetSeekTime = (layer.video.trimStart || 0) + localTime * (layer.video.playbackRate || 1.0);
+
+          if (video.readyState >= 2 && Math.abs(video.currentTime - targetSeekTime) > 0.05) {
+            promises.push(
+              new Promise<void>((resolve) => {
+                let resolved = false;
+                const onSeeked = () => {
+                  if (resolved) return;
+                  resolved = true;
+                  video.removeEventListener('seeked', onSeeked);
+                  resolve();
+                };
+                video.addEventListener('seeked', onSeeked);
+                video.currentTime = targetSeekTime;
+                
+                // Fallback timeout in case video gets stuck buffering
+                setTimeout(() => {
+                  if (resolved) return;
+                  resolved = true;
+                  video.removeEventListener('seeked', onSeeked);
+                  resolve();
+                }, 500);
+              })
+            );
+          }
+        }
+      }
+    }
+
+    if (promises.length > 0) {
+      await Promise.all(promises);
+    }
+  }
+
   private async exportWithWebCodecs(
     renderCanvas: HTMLCanvasElement,
     ctx: CanvasRenderingContext2D,
@@ -171,8 +213,6 @@ export class MoceanExporter {
           const data = new Uint8Array(chunk.byteLength);
           chunk.copyTo(data);
 
-          // Crucial: WebCodecs VideoEncoder chunk.duration is often undefined/0.
-          // Explicitly supply frameDurationMicros so each frame has exact timestamp & duration in the MP4 timeline.
           const durationMicros = chunk.duration && chunk.duration > 0 ? chunk.duration : frameDurationMicros;
 
           muxer.addVideoChunkRaw(
@@ -216,7 +256,10 @@ export class MoceanExporter {
 
       const currentTime = frameIndex / fps;
 
-      // Render frame deterministically at exact fractional second
+      // 1. Await any HTML video elements to seek and decode
+      await this.prepareVideoLayers(exportLayers, currentTime);
+
+      // 2. Render frame deterministically at exact fractional second
       renderFrame({
         ctx,
         canvasSettings: scaledCanvasSettings,
@@ -237,9 +280,13 @@ export class MoceanExporter {
       videoEncoder.encode(videoFrame, { keyFrame: isKeyFrame });
       videoFrame.close();
 
-      if (videoEncoder.encodeQueueSize > 4) {
-        await new Promise((resolve) => setTimeout(resolve, 10));
-      } else if (frameIndex % 8 === 0) {
+      // 3. Prevent queue buildup to avoid dropping frames or silent OOMs
+      while (videoEncoder.encodeQueueSize > 4) {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      
+      // 4. Yield event loop occasionally to update UI smoothly
+      if (frameIndex % 8 === 0) {
         await new Promise((resolve) => setTimeout(resolve, 0));
       }
 
@@ -315,6 +362,9 @@ export class MoceanExporter {
       }
 
       const currentTime = frameIndex / fps;
+      
+      await this.prepareVideoLayers(exportLayers, currentTime);
+      
       renderFrame({
         ctx,
         canvasSettings: scaledCanvasSettings,
