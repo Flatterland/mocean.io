@@ -16,13 +16,14 @@ export const Timeline: React.FC = () => {
     selectedLayerIds,
     selectLayer,
     updateLayer,
-    addTextLayer,
+    addVideoLayer,
+    addImageLayer,
   } = useProjectStore();
 
   const timelineWidth = Math.max(1200, (canvas.duration + 1) * zoom);
   const sortedLayers = [...layers].sort((a, b) => b.trackIndex - a.trackIndex);
 
-  // Auto-scroll timeline when playhead moves out of view during playback
+  // Auto-scroll timeline during playback
   useEffect(() => {
     const container = scrollContainerRef.current;
     if (!container) return;
@@ -37,6 +38,34 @@ export const Timeline: React.FC = () => {
     }
   }, [currentTime, zoom]);
 
+  // Drag and drop video/image directly onto timeline tracks
+  const handleTimelineDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  };
+
+  const handleTimelineDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files);
+
+    files.forEach((file) => {
+      const isVideo = file.type.startsWith('video/') || file.name.match(/\.(mp4|webm|mov|mkv)$/i);
+      const isImage = file.type.startsWith('image/') || file.name.match(/\.(png|jpg|jpeg|svg|webp)$/i);
+
+      if (isVideo) {
+        const url = URL.createObjectURL(file);
+        addVideoLayer(url, file.name.replace(/\.[^/.]+$/, ''));
+      } else if (isImage) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const src = event.target?.result as string;
+          addImageLayer(src, file.name.replace(/\.[^/.]+$/, ''));
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+  };
+
   return (
     <div className="h-64 bg-[#11131a] border-t border-[#222734] flex flex-col select-none shrink-0 z-20">
       {/* Top Controls Bar */}
@@ -46,12 +75,10 @@ export const Timeline: React.FC = () => {
       <div className="flex-1 flex overflow-hidden">
         {/* Left Track Headers */}
         <div className="w-56 bg-[#0d0e14] border-r border-[#222734] flex flex-col shrink-0 overflow-y-auto custom-scrollbar">
-          {/* Header row aligned with ruler */}
           <div className="h-7 border-b border-[#222734] px-3 flex items-center justify-between text-[10px] font-bold text-slate-500 uppercase tracking-wider bg-[#0a0b10]">
             <span>Tracks ({sortedLayers.length})</span>
           </div>
 
-          {/* Track item labels */}
           <div className="flex-1">
             {sortedLayers.map((layer) => {
               const isSelected = selectedLayerIds.includes(layer.id);
@@ -101,12 +128,12 @@ export const Timeline: React.FC = () => {
         {/* Right Scrollable Tracks Timeline Canvas */}
         <div
           ref={scrollContainerRef}
+          onDragOver={handleTimelineDragOver}
+          onDrop={handleTimelineDrop}
           className="flex-1 overflow-x-auto overflow-y-auto relative bg-[#090a0f] custom-scrollbar"
         >
-          {/* Top Time Ruler */}
           <TimelineRuler timelineWidth={timelineWidth} />
 
-          {/* Tracks Area */}
           <div
             className="relative min-h-[calc(100%-28px)]"
             style={{ width: timelineWidth }}
@@ -116,7 +143,6 @@ export const Timeline: React.FC = () => {
               setCurrentTime(Math.max(0, Math.min(canvas.duration, clickX / zoom)));
             }}
           >
-            {/* Grid line background */}
             <div
               className="absolute inset-0 pointer-events-none"
               style={{
@@ -125,7 +151,6 @@ export const Timeline: React.FC = () => {
               }}
             />
 
-            {/* Layer Track Rows */}
             {sortedLayers.map((layer) => (
               <div
                 key={layer.id}
@@ -135,7 +160,6 @@ export const Timeline: React.FC = () => {
               </div>
             ))}
 
-            {/* Playhead Vertical Scrub Line */}
             <div
               className="absolute top-0 bottom-0 w-[1.5px] bg-red-500 pointer-events-none z-30 shadow-glow-cyan"
               style={{ left: currentTime * zoom }}

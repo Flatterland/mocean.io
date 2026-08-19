@@ -7,25 +7,27 @@ import {
   AlignLeft,
   AlignCenter,
   AlignRight,
-  AlignJustify,
-  Layers,
   Palette,
-  Eye,
   Trash2,
   Copy,
   Repeat,
   ArrowRightCircle,
   LogOut,
-  Flame,
-  ShieldAlert,
-  PaintBucket
+  Radio,
+  Plus,
+  Key,
+  Video as VideoIcon,
+  Volume2,
+  VolumeX,
+  Footprints,
+  Eye
 } from 'lucide-react';
 import { useProjectStore } from '../../store/projectStore';
 import { MOTION_PRESETS } from '../../presets/motionPresets';
-import { MotionPresetType, EasingType } from '../../types/animation';
-import { ShapeType } from '../../types/layer';
+import { MotionPresetType, EasingType, AnimatableProperty } from '../../types/animation';
 
 const GOOGLE_FONTS = [
+  'Lato',
   'Montserrat',
   'Inter',
   'Space Grotesk',
@@ -36,6 +38,26 @@ const GOOGLE_FONTS = [
   'JetBrains Mono',
   'Rubik',
   'Syne',
+  'Plus Jakarta Sans',
+  'Roboto',
+  'Open Sans',
+  'Oswald',
+  'Raleway',
+  'Merriweather',
+  'Work Sans',
+  'DM Sans',
+  'Lexend',
+  'Cinzel',
+  'Cormorant Garamond',
+  'Permanent Marker',
+  'Anton',
+  'Righteous',
+  'Archivo Black',
+  'Unbounded',
+  'Sora',
+  'Cabin',
+  'Bungee',
+  'Abril Fatface',
 ];
 
 const EASING_OPTIONS: { id: EasingType; name: string }[] = [
@@ -47,17 +69,22 @@ const EASING_OPTIONS: { id: EasingType; name: string }[] = [
   { id: 'easeOutBack', name: 'Ease Out Back' },
   { id: 'easeOutBounce', name: 'Ease Out Bounce' },
   { id: 'easeInOutCubic', name: 'Ease In-Out Smooth' },
-  { id: 'linear', name: 'Linear (Constant)' },
+  { id: 'linear', name: 'Linear' },
 ];
 
 export const RightInspector: React.FC = () => {
   const {
     layers,
     selectedLayerIds,
+    currentTime,
     updateLayer,
     deleteLayers,
     duplicateLayers,
     alignSelectedLayers,
+    addKeyframe,
+    removeKeyframe,
+    startMotionPathRecording,
+    clearMotionPath,
     saveHistory,
   } = useProjectStore();
 
@@ -69,17 +96,26 @@ export const RightInspector: React.FC = () => {
         <Sliders className="w-8 h-8 mb-3 text-slate-600 animate-pulse" />
         <span className="text-sm font-semibold text-slate-400">No Layer Selected</span>
         <p className="text-xs text-slate-600 mt-1 max-w-[200px]">
-          Click any text, shape or element on the canvas or timeline to inspect its motion presets and styling.
+          Select any text, shape, image or video to inspect motion presets, keyframes, and freehand mouse paths.
         </p>
       </aside>
     );
   }
 
   const { transform, style, animations } = selectedLayer;
+  const localTime = Math.max(0, currentTime - selectedLayer.startTime);
+
+  const keyframableProps: { prop: AnimatableProperty; label: string; currentVal: number }[] = [
+    { prop: 'x', label: 'Position X', currentVal: transform.x },
+    { prop: 'y', label: 'Position Y', currentVal: transform.y },
+    { prop: 'scaleX', label: 'Scale', currentVal: transform.scaleX },
+    { prop: 'rotation', label: 'Rotation', currentVal: transform.rotation },
+    { prop: 'opacity', label: 'Opacity', currentVal: style.opacity },
+  ];
 
   return (
     <aside className="w-80 bg-[#11131a] border-l border-[#222734] flex flex-col select-none shrink-0 overflow-y-auto max-h-screen custom-scrollbar pb-16">
-      {/* Layer Header */}
+      {/* Header */}
       <div className="p-4 border-b border-[#222734] flex items-center justify-between">
         <div className="min-w-0 pr-2">
           <input
@@ -112,7 +148,78 @@ export const RightInspector: React.FC = () => {
       </div>
 
       <div className="p-4 space-y-6">
-        {/* --- SECTION 1: MOTION PRESETS --- */}
+        {/* --- SECTION: MOUSE MOTION PATH RECORDER --- */}
+        <div className="p-3.5 rounded-xl bg-gradient-to-br from-indigo-950/40 via-[#181b24] to-[#181b24] border border-indigo-500/30 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-indigo-300 flex items-center gap-1.5">
+              <Radio className="w-3.5 h-3.5 text-rose-400 animate-pulse" />
+              <span>Mouse Path Motion</span>
+            </span>
+            {animations.motionPath?.points?.length ? (
+              <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/30">
+                {animations.motionPath.points.length} pts
+              </span>
+            ) : null}
+          </div>
+
+          <p className="text-[11px] text-slate-400">
+            Draw motion freely with your mouse in real-time across the canvas.
+          </p>
+
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              onClick={() => startMotionPathRecording(selectedLayer.id)}
+              className="flex-1 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 shadow-glow-accent transition-all active:scale-95"
+            >
+              <Radio className="w-3.5 h-3.5" />
+              <span>Draw Motion Path</span>
+            </button>
+
+            {animations.motionPath?.points?.length ? (
+              <button
+                onClick={() => clearMotionPath(selectedLayer.id)}
+                className="px-2.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium transition-colors"
+                title="Clear Path"
+              >
+                Clear
+              </button>
+            ) : null}
+          </div>
+        </div>
+
+        {/* --- SECTION: PROPERTY KEYFRAMING --- */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+              <Key className="w-3.5 h-3.5 text-amber-400" />
+              <span>Property Keyframes</span>
+            </span>
+          </div>
+
+          <div className="p-3 rounded-xl bg-[#181b24] border border-[#222734] space-y-2">
+            <div className="space-y-1.5">
+              {keyframableProps.map(({ prop, label, currentVal }) => (
+                <div key={prop} className="flex items-center justify-between py-1 text-xs border-b border-[#222734]/50 last:border-0">
+                  <span className="text-slate-300">{label}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[11px] text-slate-400">
+                      {typeof currentVal === 'number' ? currentVal.toFixed(1) : currentVal}
+                    </span>
+                    <button
+                      onClick={() => addKeyframe(selectedLayer.id, prop, localTime, currentVal)}
+                      className="p-1 bg-indigo-600/30 hover:bg-indigo-600 text-indigo-300 hover:text-white rounded text-[10px] font-mono flex items-center gap-0.5 transition-colors"
+                      title="Add Keyframe at Playhead"
+                    >
+                      <Plus className="w-3 h-3" /> ◇
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* --- SECTION: MOTION PRESETS --- */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
@@ -121,13 +228,11 @@ export const RightInspector: React.FC = () => {
             </span>
           </div>
 
-          {/* Entrance (In) Preset */}
+          {/* Entrance */}
           <div className="p-3 rounded-xl bg-[#181b24] border border-[#222734] space-y-2.5">
-            <div className="flex items-center justify-between text-xs">
-              <span className="flex items-center gap-1.5 text-emerald-400 font-semibold">
-                <ArrowRightCircle className="w-3.5 h-3.5" /> Entrance (In)
-              </span>
-            </div>
+            <span className="flex items-center gap-1.5 text-emerald-400 font-semibold text-xs">
+              <ArrowRightCircle className="w-3.5 h-3.5" /> Entrance (In)
+            </span>
 
             <select
               value={animations.inPreset || ''}
@@ -168,40 +273,15 @@ export const RightInspector: React.FC = () => {
                   }
                   className="w-full accent-indigo-500 cursor-pointer"
                 />
-
-                {selectedLayer.type === 'text' && (
-                  <>
-                    <div className="flex items-center justify-between text-[11px] text-slate-400">
-                      <span>Stagger Delay</span>
-                      <span className="font-mono text-slate-300">{(animations.inStagger || 0.03).toFixed(2)}s</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="0.0"
-                      max="0.2"
-                      step="0.01"
-                      value={animations.inStagger || 0.03}
-                      onChange={(e) =>
-                        updateLayer(selectedLayer.id, {
-                          animations: { ...animations, inStagger: parseFloat(e.target.value) },
-                        })
-                      }
-                      className="w-full accent-indigo-500 cursor-pointer"
-                    />
-                  </>
-                )}
               </div>
             )}
           </div>
 
-          {/* Continuous Loop Preset */}
-          <div className="p-3 rounded-xl bg-[#181b24] border border-[#222734] space-y-2.5">
-            <div className="flex items-center justify-between text-xs">
-              <span className="flex items-center gap-1.5 text-cyan-400 font-semibold">
-                <Repeat className="w-3.5 h-3.5" /> Continuous (Loop)
-              </span>
-            </div>
-
+          {/* Loop */}
+          <div className="p-3 rounded-xl bg-[#181b24] border border-[#222734] space-y-2">
+            <span className="flex items-center gap-1.5 text-cyan-400 font-semibold text-xs">
+              <Repeat className="w-3.5 h-3.5" /> Continuous (Loop)
+            </span>
             <select
               value={animations.loopPreset || ''}
               onChange={(e) => {
@@ -223,14 +303,11 @@ export const RightInspector: React.FC = () => {
             </select>
           </div>
 
-          {/* Exit (Out) Preset */}
-          <div className="p-3 rounded-xl bg-[#181b24] border border-[#222734] space-y-2.5">
-            <div className="flex items-center justify-between text-xs">
-              <span className="flex items-center gap-1.5 text-rose-400 font-semibold">
-                <LogOut className="w-3.5 h-3.5" /> Exit (Out)
-              </span>
-            </div>
-
+          {/* Exit */}
+          <div className="p-3 rounded-xl bg-[#181b24] border border-[#222734] space-y-2">
+            <span className="flex items-center gap-1.5 text-rose-400 font-semibold text-xs">
+              <LogOut className="w-3.5 h-3.5" /> Exit (Out)
+            </span>
             <select
               value={animations.outPreset || ''}
               onChange={(e) => {
@@ -253,15 +330,66 @@ export const RightInspector: React.FC = () => {
           </div>
         </div>
 
-        {/* --- SECTION 2: TEXT PROPERTIES (IF TEXT LAYER) --- */}
+        {/* --- SECTION: VIDEO PROPERTIES (IF VIDEO LAYER) --- */}
+        {selectedLayer.type === 'video' && selectedLayer.video && (
+          <div className="space-y-3">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+              <VideoIcon className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Video Settings</span>
+            </span>
+
+            <div className="p-3 rounded-xl bg-[#181b24] border border-[#222734] space-y-3">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-300 flex items-center gap-1.5">
+                  <Volume2 className="w-3.5 h-3.5 text-indigo-400" /> Audio Volume
+                </span>
+                <span className="font-mono text-slate-400">
+                  {Math.round(selectedLayer.video.volume * 100)}%
+                </span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={selectedLayer.video.volume}
+                onChange={(e) =>
+                  updateLayer(selectedLayer.id, {
+                    video: { ...selectedLayer.video!, volume: parseFloat(e.target.value) },
+                  })
+                }
+                className="w-full accent-indigo-500 cursor-pointer"
+              />
+
+              <div className="flex items-center justify-between text-xs pt-1">
+                <span className="text-slate-300">Playback Speed</span>
+                <select
+                  value={selectedLayer.video.playbackRate}
+                  onChange={(e) =>
+                    updateLayer(selectedLayer.id, {
+                      video: { ...selectedLayer.video!, playbackRate: parseFloat(e.target.value) },
+                    })
+                  }
+                  className="bg-[#11131a] border border-[#222734] rounded px-2 py-1 text-slate-200 text-xs"
+                >
+                  <option value="0.5">0.5x (Slow)</option>
+                  <option value="1">1.0x (Normal)</option>
+                  <option value="1.5">1.5x (Fast)</option>
+                  <option value="2">2.0x (Double)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* --- SECTION: TYPOGRAPHY (IF TEXT LAYER) --- */}
         {selectedLayer.type === 'text' && selectedLayer.text && (
           <div className="space-y-3">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
               <Type className="w-3.5 h-3.5 text-indigo-400" />
-              <span>Typography</span>
+              <span>Typography (30+ Fonts)</span>
             </span>
 
-            {/* Text Area */}
             <textarea
               rows={2}
               value={selectedLayer.text.text}
@@ -274,7 +402,6 @@ export const RightInspector: React.FC = () => {
               placeholder="Enter kinetic text..."
             />
 
-            {/* Font Family */}
             <div className="space-y-1">
               <label className="text-[11px] text-slate-400">Font Family</label>
               <select
@@ -288,13 +415,12 @@ export const RightInspector: React.FC = () => {
               >
                 {GOOGLE_FONTS.map((font) => (
                   <option key={font} value={font} style={{ fontFamily: font }}>
-                    {font}
+                    {font} {font === 'Lato' ? '⭐' : ''}
                   </option>
                 ))}
               </select>
             </div>
 
-            {/* Size & Weight */}
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
                 <label className="text-[11px] text-slate-400">Size (px)</label>
@@ -330,88 +456,38 @@ export const RightInspector: React.FC = () => {
                 </select>
               </div>
             </div>
-
-            {/* Alignment & Stagger Unit */}
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <label className="text-[11px] text-slate-400">Align</label>
-                <div className="flex bg-[#181b24] p-1 rounded-lg border border-[#222734]">
-                  {(['left', 'center', 'right'] as const).map((align) => (
-                    <button
-                      key={align}
-                      onClick={() =>
-                        updateLayer(selectedLayer.id, {
-                          text: { ...selectedLayer.text!, textAlign: align },
-                        })
-                      }
-                      className={`flex-1 p-1 rounded flex items-center justify-center transition-colors ${
-                        selectedLayer.text?.textAlign === align
-                          ? 'bg-indigo-600 text-white'
-                          : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      {align === 'left' && <AlignLeft className="w-3.5 h-3.5" />}
-                      {align === 'center' && <AlignCenter className="w-3.5 h-3.5" />}
-                      {align === 'right' && <AlignRight className="w-3.5 h-3.5" />}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[11px] text-slate-400">Stagger By</label>
-                <select
-                  value={selectedLayer.text.staggerUnit}
-                  onChange={(e) =>
-                    updateLayer(selectedLayer.id, {
-                      text: { ...selectedLayer.text!, staggerUnit: e.target.value as any },
-                    })
-                  }
-                  className="w-full bg-[#181b24] border border-[#222734] rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                >
-                  <option value="character">Per Character</option>
-                  <option value="word">Per Word</option>
-                  <option value="line">Per Line</option>
-                </select>
-              </div>
-            </div>
           </div>
         )}
 
-        {/* --- SECTION 3: TRANSFORM & ALIGNMENT --- */}
+        {/* --- SECTION: TRANSFORM --- */}
         <div className="space-y-3">
           <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
             <Move className="w-3.5 h-3.5 text-indigo-400" />
             <span>Transform</span>
           </span>
 
-          {/* Quick Align Bar */}
           <div className="flex bg-[#181b24] p-1 rounded-lg border border-[#222734] justify-between">
             <button
               onClick={() => alignSelectedLayers('left')}
               className="p-1.5 text-slate-400 hover:text-white rounded hover:bg-slate-700/50 text-xs"
-              title="Align Left"
             >
               Left
             </button>
             <button
               onClick={() => alignSelectedLayers('center')}
               className="p-1.5 text-slate-400 hover:text-white rounded hover:bg-slate-700/50 text-xs font-bold text-indigo-400"
-              title="Align Center"
             >
               Center
             </button>
             <button
               onClick={() => alignSelectedLayers('right')}
               className="p-1.5 text-slate-400 hover:text-white rounded hover:bg-slate-700/50 text-xs"
-              title="Align Right"
             >
               Right
             </button>
             <button
               onClick={() => alignSelectedLayers('middle')}
               className="p-1.5 text-slate-400 hover:text-white rounded hover:bg-slate-700/50 text-xs font-bold text-indigo-400"
-              title="Align Middle"
             >
               Middle
             </button>
@@ -428,7 +504,7 @@ export const RightInspector: React.FC = () => {
                     transform: { ...transform, x: parseInt(e.target.value) || 0 },
                   })
                 }
-                className="w-full bg-[#181b24] border border-[#222734] rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                className="w-full bg-[#181b24] border border-[#222734] rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none"
               />
             </div>
             <div className="space-y-1">
@@ -441,49 +517,19 @@ export const RightInspector: React.FC = () => {
                     transform: { ...transform, y: parseInt(e.target.value) || 0 },
                   })
                 }
-                className="w-full bg-[#181b24] border border-[#222734] rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1">
-              <label className="text-[11px] text-slate-400">Width</label>
-              <input
-                type="number"
-                value={Math.round(transform.width)}
-                onChange={(e) =>
-                  updateLayer(selectedLayer.id, {
-                    transform: { ...transform, width: parseInt(e.target.value) || 50 },
-                  })
-                }
-                className="w-full bg-[#181b24] border border-[#222734] rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[11px] text-slate-400">Height</label>
-              <input
-                type="number"
-                value={Math.round(transform.height)}
-                onChange={(e) =>
-                  updateLayer(selectedLayer.id, {
-                    transform: { ...transform, height: parseInt(e.target.value) || 50 },
-                  })
-                }
-                className="w-full bg-[#181b24] border border-[#222734] rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                className="w-full bg-[#181b24] border border-[#222734] rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none"
               />
             </div>
           </div>
         </div>
 
-        {/* --- SECTION 4: STYLING & GLOW --- */}
+        {/* --- SECTION: COLOR & GLOW --- */}
         <div className="space-y-3">
           <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
             <Palette className="w-3.5 h-3.5 text-pink-400" />
-            <span>Colors & Effects</span>
+            <span>Glow & Styling</span>
           </span>
 
-          {/* Fill Color */}
           <div className="flex items-center justify-between p-2 rounded-lg bg-[#181b24] border border-[#222734]">
             <span className="text-xs text-slate-300">Fill Color</span>
             <div className="flex items-center gap-2">
@@ -501,7 +547,6 @@ export const RightInspector: React.FC = () => {
             </div>
           </div>
 
-          {/* Glow / Shadow Blur */}
           <div className="p-3 rounded-xl bg-[#181b24] border border-[#222734] space-y-2">
             <div className="flex items-center justify-between text-xs">
               <span className="text-slate-300">Neon Glow / Shadow</span>
@@ -519,27 +564,6 @@ export const RightInspector: React.FC = () => {
                     shadowBlur: parseInt(e.target.value),
                     shadowColor: style.shadowColor === 'transparent' ? style.fill : style.shadowColor,
                   },
-                })
-              }
-              className="w-full accent-indigo-500 cursor-pointer"
-            />
-          </div>
-
-          {/* Opacity */}
-          <div className="p-3 rounded-xl bg-[#181b24] border border-[#222734] space-y-2">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-300">Opacity</span>
-              <span className="font-mono text-indigo-400">{Math.round(style.opacity * 100)}%</span>
-            </div>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={style.opacity}
-              onChange={(e) =>
-                updateLayer(selectedLayer.id, {
-                  style: { ...style, opacity: parseFloat(e.target.value) },
                 })
               }
               className="w-full accent-indigo-500 cursor-pointer"

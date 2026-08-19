@@ -1,6 +1,6 @@
 import { MotionPresetType, PropertyTrack } from './animation';
 
-export type LayerType = 'text' | 'shape' | 'image' | 'vector' | 'audio' | 'group';
+export type LayerType = 'text' | 'shape' | 'image' | 'video' | 'vector' | 'audio' | 'group';
 
 export type ShapeType = 'rectangle' | 'circle' | 'star' | 'polygon' | 'triangle' | 'arrow' | 'pill' | 'heart';
 
@@ -73,33 +73,57 @@ export interface ImageProperties {
   originalWidth: number;
   originalHeight: number;
   aspectRatioLock: boolean;
-  brightness: number; // 1.0 default
-  contrast: number; // 1.0 default
-  saturate: number; // 1.0 default
-  hueRotate: number; // in degrees
+  brightness: number;
+  contrast: number;
+  saturate: number;
+  hueRotate: number;
+}
+
+export interface VideoProperties {
+  src: string;
+  originalWidth: number;
+  originalHeight: number;
+  aspectRatioLock: boolean;
+  volume: number; // 0.0 to 1.0
+  muted: boolean;
+  playbackRate: number; // 1.0 default
+  trimStart: number; // in seconds
+  trimEnd: number; // in seconds
 }
 
 export interface AudioProperties {
   src: string;
-  volume: number; // 0 to 1
+  volume: number;
   muted: boolean;
-  fadeIn: number; // duration in seconds
-  fadeOut: number; // duration in seconds
+  fadeIn: number;
+  fadeOut: number;
+}
+
+export interface MotionPathPoint {
+  x: number;
+  y: number;
+  time: number; // relative to layer startTime
+}
+
+export interface MotionPathData {
+  points: MotionPathPoint[];
+  showPathTrail: boolean;
 }
 
 export interface LayerAnimationSettings {
   inPreset?: MotionPresetType;
-  inDuration: number; // e.g. 0.8s
-  inStagger: number; // e.g. 0.04s per char/word
+  inDuration: number;
+  inStagger: number;
 
   outPreset?: MotionPresetType;
-  outDuration: number; // e.g. 0.6s
+  outDuration: number;
 
   loopPreset?: MotionPresetType;
-  loopSpeed: number; // e.g. 1.0 multiplier
-  loopIntensity: number; // e.g. 1.0 multiplier
+  loopSpeed: number;
+  loopIntensity: number;
 
   propertyTracks?: PropertyTrack[];
+  motionPath?: MotionPathData;
 }
 
 export interface Layer {
@@ -110,9 +134,9 @@ export interface Layer {
   locked: boolean;
 
   // Timeline position
-  startTime: number; // in seconds
-  endTime: number; // in seconds
-  trackIndex: number; // Vertical track row in timeline
+  startTime: number;
+  endTime: number;
+  trackIndex: number;
 
   // Spatial & style
   transform: Transform;
@@ -124,5 +148,6 @@ export interface Layer {
   shape?: ShapeProperties;
   vector?: VectorProperties;
   image?: ImageProperties;
+  video?: VideoProperties;
   audio?: AudioProperties;
 }

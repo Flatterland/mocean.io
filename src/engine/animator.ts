@@ -2,7 +2,8 @@ import { Layer, Transform, LayerStyle } from '../types/layer';
 import { GlyphLayout } from './textLayout';
 import { evaluateEasing } from './easings';
 import { MOTION_PRESETS } from '../presets/motionPresets';
-import { clamp } from '../utils/math2d';
+import { clamp, lerp } from '../utils/math2d';
+import { AnimatableProperty } from '../types/animation';
 
 export interface AnimatedGlyphState {
   char: string;
@@ -10,7 +11,7 @@ export interface AnimatedGlyphState {
   y: number;
   scaleX: number;
   scaleY: number;
-  rotation: number; // in degrees
+  rotation: number;
   opacity: number;
   blur: number;
   visible: boolean;
@@ -22,16 +23,14 @@ export interface AnimatedLayerState {
   transform: Transform;
   style: LayerStyle;
   glyphs?: AnimatedGlyphState[];
-  maskWipeProgress?: number; // 0 (hidden) to 1 (fully revealed)
+  maskWipeProgress?: number;
   strokeDashOffset?: number;
   glitchOffset?: { x: number; y: number };
 }
 
 export function computeLayerState(layer: Layer, currentTime: number): AnimatedLayerState {
-  // Check if layer is active at currentTime
   const isActive = currentTime >= layer.startTime && currentTime <= layer.endTime;
 
-  // Base clone
   const transform: Transform = { ...layer.transform };
   const style: LayerStyle = { ...layer.style };
 
@@ -45,10 +44,18 @@ export function computeLayerState(layer: Layer, currentTime: number): AnimatedLa
   }
 
   const localTime = currentTime - layer.startTime;
-  const layerDuration = layer.endTime - layer.startTime;
   const timeRemaining = layer.endTime - currentTime;
 
-  const { inPreset, inDuration, outPreset, outDuration, loopPreset, loopSpeed = 1 } = layer.animations;
+  const {
+    inPreset,
+    inDuration,
+    outPreset,
+    outDuration,
+    loopPreset,
+    loopSpeed = 1,
+    propertyTracks,
+    motionPath,
+  } = layer.animations;
 
   let currentScaleX = 1;
   let currentScaleY = 1;
@@ -61,7 +68,90 @@ export function computeLayerState(layer: Layer, currentTime: number): AnimatedLa
   let glitchOffset = { x: 0, y: 0 };
   let strokeDashOffset = 0;
 
-  // 1. EVALUATE ENTRANCE (IN) PRESET
+  // 1. EVALUATE FREEHAND MOUSE MOTION PATH (if present)
+  if (motionPath && motionPath.points && motionPath.points.length > 1) {
+    const points = motionPath.points;
+    const pathTotalTime = points[points.length - 1].time;
+    // Map localTime into path duration
+    const clampedTime = Math.max(0, Math.min(pathTotalTime, localTime));
+
+    // Find bounding points
+    let p0 = points[0];
+    let p1 = points[points.length - 1];
+
+    for (let i = 0; i < points.length - 1; i++) {
+      if (clampedTime >= points[i].time && clampedTime <= points[i + 1].time) {
+        p0 = points[i];
+        p1 = points[i + 1];
+        break;
+      }
+    }
+
+    const segmentDuration = p1.time - p0.time;
+    const factor = segmentDuration > 0 ? (clampedTime - p0.time) / segmentDuration : 0;
+
+    transform.x = lerp(p0.x, p1.x, factor);
+    transform.y = lerp(p0.y, p1.y, factor);
+  }
+
+  // 2. EVALUATE CUSTOM PROPERTY KEYFRAMES
+  if (propertyTracks && propertyTracks.length > 0) {
+    propertyTracks.forEach((track) => {
+      if (!track.keyframes || track.keyframes.length === 0) return;
+
+      const kfs = [...track.keyframes].sort((a, b) => a.time - b.time);
+
+      let val: number;
+      if (localTime <= kfs[0].time) {
+        val = kfs[0].value;
+      } else if (localTime >= kfs[kfs.length - 1].time) {
+        val = kfs[kfs.length - 1].value;
+      } else {
+        // Interpolate between two keyframes
+        let k0 = kfs[0];
+        let k1 = kfs[1];
+        for (let i = 0; i < kfs.length - 1; i++) {
+          if (localTime >= kfs[i].time && localTime <= kfs[i + 1].time) {
+            k0 = kfs[i];
+            k1 = kfs[i + 1];
+            break;
+          }
+        }
+        const span = k1.time - k0.time;
+        const rawProgress = span > 0 ? (localTime - k0.time) / span : 0;
+        const progress = evaluateEasing(k1.easing || 'easeOutQuad', rawProgress);
+        val = lerp(k0.value, k1.value, progress);
+      }
+
+      switch (track.property) {
+        case 'x':
+          transform.x = val;
+          break;
+        case 'y':
+          transform.y = val;
+          break;
+        case 'scaleX':
+          transform.scaleX = val;
+          break;
+        case 'scaleY':
+          transform.scaleY = val;
+          break;
+        case 'rotation':
+          transform.rotation = val;
+          break;
+        case 'opacity':
+          style.opacity = val;
+          break;
+        case 'blur':
+          style.blur = val;
+          break;
+        default:
+          break;
+      }
+    });
+  }
+
+  // 3. EVALUATE ENTRANCE (IN) PRESET
   if (inPreset && localTime < inDuration) {
     const config = MOTION_PRESETS[inPreset];
     const progress = clamp(localTime / inDuration, 0, 1);
@@ -159,10 +249,8 @@ export function computeLayerState(layer: Layer, currentTime: number): AnimatedLa
     }
   }
 
-  // 2. EVALUATE CONTINUOUS (LOOP) PRESET
+  // 4. EVALUATE CONTINUOUS (LOOP) PRESET
   if (loopPreset) {
-    const loopT = (localTime * loopSpeed) % 4; // normalized time
-
     switch (loopPreset) {
       case 'loop_breathing_pulse': {
         const pulse = Math.sin(localTime * 2.5 * loopSpeed) * 0.05;
@@ -184,8 +272,8 @@ export function computeLayerState(layer: Layer, currentTime: number): AnimatedLa
       }
 
       case 'loop_shake_vibe': {
-        currentOffsetX += (Math.sin(localTime * 30) * 3);
-        currentOffsetY += (Math.cos(localTime * 35) * 3);
+        currentOffsetX += Math.sin(localTime * 30) * 3;
+        currentOffsetY += Math.cos(localTime * 35) * 3;
         break;
       }
 
@@ -202,9 +290,9 @@ export function computeLayerState(layer: Layer, currentTime: number): AnimatedLa
     }
   }
 
-  // 3. EVALUATE EXIT (OUT) PRESET
+  // 5. EVALUATE EXIT (OUT) PRESET
   if (outPreset && timeRemaining < outDuration && timeRemaining >= 0) {
-    const outProgress = 1 - timeRemaining / outDuration; // 0 to 1
+    const outProgress = 1 - timeRemaining / outDuration;
     const config = MOTION_PRESETS[outPreset];
     const eased = evaluateEasing(config ? config.easing : 'easeInQuad', outProgress);
 
@@ -271,9 +359,6 @@ export function computeLayerState(layer: Layer, currentTime: number): AnimatedLa
   };
 }
 
-/**
- * Computes individual character-level animations (e.g. Typewriter, Staggered bouncing letters)
- */
 export function computeGlyphAnimations(
   layer: Layer,
   glyphs: GlyphLayout[],
@@ -313,7 +398,6 @@ export function computeGlyphAnimations(
 
         switch (inPreset) {
           case 'text_typewriter': {
-            // Instant snap per char
             visible = true;
             charOpacity = 1;
             break;

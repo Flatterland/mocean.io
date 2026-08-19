@@ -6,7 +6,7 @@ import { Point, rotatePoint } from '../../utils/math2d';
 interface DragState {
   layerId: string;
   type: 'move' | 'rotate' | 'resize';
-  handle?: string; // 'tl', 'tr', 'bl', 'br', 'rot'
+  handle?: string;
   startX: number;
   startY: number;
   initialX: number;
@@ -25,14 +25,26 @@ export const CanvasStage: React.FC = () => {
     layers,
     selectedLayerIds,
     currentTime,
+    setCurrentTime,
     isPlaying,
+    playbackSpeed,
     viewportZoom,
+    setViewportZoom,
     viewportPan,
     setViewportPan,
     showSafeAreas,
     showGrid,
+    activeTool,
+    setActiveTool,
+    isRecordingMotionPath,
+    recordingLayerId,
+    addMotionPathPoint,
+    finishMotionPathRecording,
     selectLayer,
     updateLayer,
+    splitLayerAtPlayhead,
+    addImageLayer,
+    addVideoLayer,
     saveHistory,
   } = useProjectStore();
 
@@ -40,7 +52,7 @@ export const CanvasStage: React.FC = () => {
   const [isPanning, setIsPanning] = useState(false);
   const panStartRef = useRef<Point>({ x: 0, y: 0 });
 
-  // Playback Loop via requestAnimationFrame
+  // Playback Loop with Shuttle Speed (1x, 2x, 4x, -1x, -2x, -4x)
   useEffect(() => {
     if (!isPlaying) return;
 
@@ -48,7 +60,7 @@ export const CanvasStage: React.FC = () => {
     let animationFrameId: number;
 
     const tick = (now: number) => {
-      const delta = (now - lastTime) / 1000;
+      const delta = ((now - lastTime) / 1000) * playbackSpeed;
       lastTime = now;
 
       const store = useProjectStore.getState();
@@ -59,6 +71,13 @@ export const CanvasStage: React.FC = () => {
           nextTime = 0;
         } else {
           nextTime = store.canvas.duration;
+          store.setIsPlaying(false);
+        }
+      } else if (nextTime <= 0) {
+        if (store.isLooping) {
+          nextTime = store.canvas.duration;
+        } else {
+          nextTime = 0;
           store.setIsPlaying(false);
         }
       }
@@ -75,7 +94,7 @@ export const CanvasStage: React.FC = () => {
     return () => {
       cancelAnimationFrame(animationFrameId);
     };
-  }, [isPlaying]);
+  }, [isPlaying, playbackSpeed]);
 
   // Main Render Frame Trigger
   useEffect(() => {
@@ -95,7 +114,7 @@ export const CanvasStage: React.FC = () => {
     });
   }, [canvas, layers, currentTime, selectedLayerIds, showSafeAreas]);
 
-  // Transform client mouse coordinate into canvas stage coordinate
+  // Screen to Canvas Coordinates
   const screenToCanvasCoords = useCallback(
     (clientX: number, clientY: number): Point => {
       const container = containerRef.current;
@@ -121,8 +140,8 @@ export const CanvasStage: React.FC = () => {
 
   // Mouse Down Event Handler
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    // Middle click or Alt+Click for panning
-    if (e.button === 1 || (e.button === 0 && e.altKey)) {
+    // Hand Tool or Middle Click or Alt+Click for panning
+    if (activeTool === 'hand' || e.button === 1 || (e.button === 0 && e.altKey)) {
       setIsPanning(true);
       panStartRef.current = { x: e.clientX - viewportPan.x, y: e.clientY - viewportPan.y };
       return;
@@ -132,7 +151,23 @@ export const CanvasStage: React.FC = () => {
 
     const coords = screenToCanvasCoords(e.clientX, e.clientY);
 
-    // Check hit test against layers from top to bottom
+    // Zoom Tool Behavior
+    if (activeTool === 'zoom') {
+      if (e.altKey || e.shiftKey) {
+        setViewportZoom(Math.max(0.1, viewportZoom - 0.2));
+      } else {
+        setViewportZoom(Math.min(4, viewportZoom + 0.2));
+      }
+      return;
+    }
+
+    // Motion Path Dragging Record Mode
+    if (activeTool === 'motion-record' && isRecordingMotionPath && recordingLayerId) {
+      addMotionPathPoint(coords.x, coords.y, 0);
+      return;
+    }
+
+    // Find clicked layer
     const sorted = [...layers].sort((a, b) => b.trackIndex - a.trackIndex);
     let hitLayer = null;
 
@@ -142,7 +177,6 @@ export const CanvasStage: React.FC = () => {
       const halfW = t.width / 2;
       const halfH = t.height / 2;
 
-      // Un-rotate click point to test in layer local space
       const localPoint = rotatePoint(coords, { x: t.x, y: t.y }, -t.rotation);
 
       if (
@@ -156,6 +190,15 @@ export const CanvasStage: React.FC = () => {
       }
     }
 
+    // Razor Tool Behavior
+    if (activeTool === 'razor') {
+      if (hitLayer) {
+        splitLayerAtPlayhead(hitLayer.id, currentTime);
+      }
+      return;
+    }
+
+    // Normal Selection & Dragging
     if (hitLayer) {
       selectLayer(hitLayer.id, e.shiftKey);
       saveHistory();
@@ -187,9 +230,22 @@ export const CanvasStage: React.FC = () => {
       return;
     }
 
+    const coords = screenToCanvasCoords(e.clientX, e.clientY);
+
+    // Freehand Motion Path Recording
+    if (activeTool === 'motion-record' && isRecordingMotionPath && recordingLayerId && e.buttons === 1) {
+      const targetLayer = layers.find((l) => l.id === recordingLayerId);
+      if (targetLayer) {
+        const localTime = Math.max(0, currentTime - targetLayer.startTime);
+        addMotionPathPoint(coords.x, coords.y, localTime);
+        // Advance time during recording gesture
+        setCurrentTime(Math.min(targetLayer.endTime, currentTime + 0.03));
+      }
+      return;
+    }
+
     if (!dragState) return;
 
-    const coords = screenToCanvasCoords(e.clientX, e.clientY);
     const dx = coords.x - dragState.startX;
     const dy = coords.y - dragState.startY;
 
@@ -197,7 +253,6 @@ export const CanvasStage: React.FC = () => {
       let nextX = dragState.initialX + dx;
       let nextY = dragState.initialY + dy;
 
-      // Smart snapping to center
       if (Math.abs(nextX - canvas.width / 2) < 15) nextX = canvas.width / 2;
       if (Math.abs(nextY - canvas.height / 2) < 15) nextY = canvas.height / 2;
 
@@ -217,6 +272,43 @@ export const CanvasStage: React.FC = () => {
     setDragState(null);
   };
 
+  // Drag-and-Drop Video / Image Files onto Canvas
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files);
+
+    files.forEach((file) => {
+      const isVideo = file.type.startsWith('video/') || file.name.match(/\.(mp4|webm|mov|mkv)$/i);
+      const isImage = file.type.startsWith('image/') || file.name.match(/\.(png|jpg|jpeg|svg|webp)$/i);
+
+      if (isVideo) {
+        const url = URL.createObjectURL(file);
+        addVideoLayer(url, file.name.replace(/\.[^/.]+$/, ''));
+      } else if (isImage) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const src = event.target?.result as string;
+          addImageLayer(src, file.name.replace(/\.[^/.]+$/, ''));
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+  };
+
+  const getCursor = () => {
+    if (isPanning) return 'grabbing';
+    if (activeTool === 'hand') return 'grab';
+    if (activeTool === 'razor') return 'crosshair';
+    if (activeTool === 'zoom') return 'zoom-in';
+    if (activeTool === 'motion-record') return 'crosshair';
+    return 'default';
+  };
+
   return (
     <div
       ref={containerRef}
@@ -224,10 +316,11 @@ export const CanvasStage: React.FC = () => {
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
-      className={`w-full h-full relative overflow-hidden flex items-center justify-center ${
-        isPanning ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'
-      }`}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+      className="w-full h-full relative overflow-hidden flex items-center justify-center select-none"
       style={{
+        cursor: getCursor(),
         backgroundImage: showGrid
           ? 'radial-gradient(circle, #222734 1px, transparent 1px)'
           : undefined,
@@ -235,7 +328,7 @@ export const CanvasStage: React.FC = () => {
         backgroundColor: '#090a0f',
       }}
     >
-      {/* Canvas Viewport Container */}
+      {/* Canvas Viewport Box */}
       <div
         className="relative shadow-2xl transition-transform ease-out"
         style={{

@@ -63,8 +63,8 @@ export interface MotionPresetConfig {
   name: string;
   category: PresetCategory;
   description: string;
-  duration: number; // default duration in seconds (e.g. 0.8s)
-  staggerDelay?: number; // per-letter or per-word delay in seconds (e.g. 0.04s)
+  duration: number;
+  staggerDelay?: number;
   easing: EasingType;
   parameters?: Record<string, number | string | boolean>;
 }
@@ -76,14 +76,12 @@ export type AnimatableProperty =
   | 'scaleY'
   | 'rotation'
   | 'opacity'
-  | 'blur'
-  | 'letterSpacing'
-  | 'color';
+  | 'blur';
 
 export interface Keyframe {
   id: string;
-  time: number; // in seconds relative to layer start
-  value: number | string;
+  time: number; // in seconds relative to layer start (0.0 to layerDuration)
+  value: number;
   easing: EasingType;
 }
 

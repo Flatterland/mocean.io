@@ -30,7 +30,6 @@ export const TimelineRuler: React.FC<TimelineRulerProps> = ({ timelineWidth }) =
     window.addEventListener('mousemove', handleMove);
     window.addEventListener('mouseup', handleUp);
 
-    // Initial click
     if (rulerRef.current) {
       const rect = rulerRef.current.getBoundingClientRect();
       const clickX = e.clientX - rect.left;
@@ -43,6 +42,9 @@ export const TimelineRuler: React.FC<TimelineRulerProps> = ({ timelineWidth }) =
     secondMarkers.push(s);
   }
 
+  const markInPx = canvas.markIn !== undefined ? canvas.markIn * zoom : 0;
+  const markOutPx = canvas.markOut !== undefined ? canvas.markOut * zoom : canvas.duration * zoom;
+
   return (
     <div
       ref={rulerRef}
@@ -50,18 +52,27 @@ export const TimelineRuler: React.FC<TimelineRulerProps> = ({ timelineWidth }) =
       className="h-7 bg-[#0d0e14] border-b border-[#222734] relative cursor-pointer select-none overflow-hidden"
       style={{ width: timelineWidth }}
     >
+      {/* Shaded Work Area (In to Out) */}
+      {(canvas.markIn !== undefined || canvas.markOut !== undefined) && (
+        <div
+          className="absolute top-0 bottom-0 bg-indigo-500/15 border-x border-indigo-400/50 pointer-events-none"
+          style={{
+            left: markInPx,
+            width: Math.max(0, markOutPx - markInPx),
+          }}
+        />
+      )}
+
       {/* Ticks and second numbers */}
       {secondMarkers.map((sec) => {
         const left = sec * zoom;
         return (
           <div key={sec} className="absolute top-0 bottom-0 pointer-events-none" style={{ left }}>
-            {/* Major second tick */}
             <div className="h-3 w-[1px] bg-slate-600" />
             <span className="absolute top-2.5 left-1 text-[9px] font-mono text-slate-400 font-medium select-none">
               {sec}s
             </span>
 
-            {/* Sub-frame ticks */}
             <div className="absolute top-0 left-[25%] h-1.5 w-[1px] bg-slate-800" style={{ left: zoom * 0.25 }} />
             <div className="absolute top-0 left-[50%] h-2 w-[1px] bg-slate-700" style={{ left: zoom * 0.5 }} />
             <div className="absolute top-0 left-[75%] h-1.5 w-[1px] bg-slate-800" style={{ left: zoom * 0.75 }} />

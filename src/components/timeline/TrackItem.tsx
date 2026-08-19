@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Layer } from '../../types/layer';
 import { useProjectStore } from '../../store/projectStore';
-import { Type, Square, Image as ImageIcon, Sparkles, Repeat, LogOut, ArrowRightCircle } from 'lucide-react';
+import { Type, Square, Image as ImageIcon, Video as VideoIcon, Sparkles, Repeat, LogOut, ArrowRightCircle } from 'lucide-react';
 import { MOTION_PRESETS } from '../../presets/motionPresets';
 
 interface TrackItemProps {
@@ -14,6 +14,8 @@ export const TrackItem: React.FC<TrackItemProps> = ({ layer, zoom }) => {
     selectedLayerIds,
     selectLayer,
     updateLayer,
+    splitLayerAtPlayhead,
+    activeTool,
     saveHistory,
     canvas,
   } = useProjectStore();
@@ -26,6 +28,16 @@ export const TrackItem: React.FC<TrackItemProps> = ({ layer, zoom }) => {
 
   const handleMouseDown = (e: React.MouseEvent, mode: 'move' | 'trim-left' | 'trim-right') => {
     e.stopPropagation();
+
+    // Razor Tool click on clip
+    if (activeTool === 'razor') {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const clickedTime = layer.startTime + clickX / zoom;
+      splitLayerAtPlayhead(layer.id, clickedTime);
+      return;
+    }
+
     selectLayer(layer.id, e.shiftKey);
     saveHistory();
     setDragMode(mode);
@@ -67,7 +79,6 @@ export const TrackItem: React.FC<TrackItemProps> = ({ layer, zoom }) => {
     window.addEventListener('mouseup', handleMouseUp);
   };
 
-  // Color theming by layer type
   const getBadgeColors = () => {
     switch (layer.type) {
       case 'text':
@@ -76,6 +87,8 @@ export const TrackItem: React.FC<TrackItemProps> = ({ layer, zoom }) => {
         return 'from-pink-600/90 to-rose-700/90 border-pink-500/70 text-pink-100';
       case 'image':
         return 'from-cyan-600/90 to-blue-700/90 border-cyan-500/70 text-cyan-100';
+      case 'video':
+        return 'from-emerald-600/90 to-teal-700/90 border-emerald-500/70 text-emerald-100';
       default:
         return 'from-slate-700 to-slate-800 border-slate-600 text-slate-200';
     }
@@ -84,6 +97,16 @@ export const TrackItem: React.FC<TrackItemProps> = ({ layer, zoom }) => {
   const inPresetConfig = layer.animations.inPreset ? MOTION_PRESETS[layer.animations.inPreset] : null;
   const loopPresetConfig = layer.animations.loopPreset ? MOTION_PRESETS[layer.animations.loopPreset] : null;
   const outPresetConfig = layer.animations.outPreset ? MOTION_PRESETS[layer.animations.outPreset] : null;
+
+  // Extract all keyframe timestamps
+  const allKeyframes: { time: number; property: string }[] = [];
+  if (layer.animations.propertyTracks) {
+    layer.animations.propertyTracks.forEach((track) => {
+      track.keyframes.forEach((kf) => {
+        allKeyframes.push({ time: kf.time, property: track.property });
+      });
+    });
+  }
 
   return (
     <div
@@ -97,7 +120,7 @@ export const TrackItem: React.FC<TrackItemProps> = ({ layer, zoom }) => {
       <div
         onMouseDown={(e) => handleMouseDown(e, 'trim-left')}
         className="absolute left-0 top-0 bottom-0 w-2.5 bg-white/20 hover:bg-white/50 rounded-l cursor-ew-resize opacity-0 group-hover:opacity-100 transition-opacity"
-        title="Trim layer start"
+        title="Trim start"
       />
 
       {/* Clip Content & Motion Badges */}
@@ -105,10 +128,10 @@ export const TrackItem: React.FC<TrackItemProps> = ({ layer, zoom }) => {
         {layer.type === 'text' && <Type className="w-3 h-3 shrink-0" />}
         {layer.type === 'shape' && <Square className="w-3 h-3 shrink-0" />}
         {layer.type === 'image' && <ImageIcon className="w-3 h-3 shrink-0" />}
+        {layer.type === 'video' && <VideoIcon className="w-3 h-3 shrink-0 text-emerald-300" />}
 
         <span className="font-semibold text-[11px] truncate">{layer.name}</span>
 
-        {/* In Preset Badge */}
         {inPresetConfig && width > 120 && (
           <span className="flex items-center gap-0.5 bg-black/30 backdrop-blur-sm px-1.5 py-0.5 rounded text-[9px] font-mono border border-white/10 shrink-0">
             <ArrowRightCircle className="w-2.5 h-2.5 text-emerald-300" />
@@ -116,7 +139,6 @@ export const TrackItem: React.FC<TrackItemProps> = ({ layer, zoom }) => {
           </span>
         )}
 
-        {/* Loop Preset Badge */}
         {loopPresetConfig && width > 200 && (
           <span className="flex items-center gap-0.5 bg-black/30 backdrop-blur-sm px-1.5 py-0.5 rounded text-[9px] font-mono border border-white/10 shrink-0">
             <Repeat className="w-2.5 h-2.5 text-cyan-300" />
@@ -124,7 +146,6 @@ export const TrackItem: React.FC<TrackItemProps> = ({ layer, zoom }) => {
           </span>
         )}
 
-        {/* Out Preset Badge */}
         {outPresetConfig && width > 280 && (
           <span className="flex items-center gap-0.5 bg-black/30 backdrop-blur-sm px-1.5 py-0.5 rounded text-[9px] font-mono border border-white/10 shrink-0">
             <LogOut className="w-2.5 h-2.5 text-rose-300" />
@@ -133,11 +154,21 @@ export const TrackItem: React.FC<TrackItemProps> = ({ layer, zoom }) => {
         )}
       </div>
 
+      {/* Keyframe Diamond Indicators */}
+      {allKeyframes.map((kf, i) => (
+        <div
+          key={i}
+          className="absolute top-1/2 -translate-y-1/2 w-2 h-2 bg-amber-400 border border-black transform rotate-45 pointer-events-none shadow-sm"
+          style={{ left: `${(kf.time / (layer.endTime - layer.startTime)) * 100}%` }}
+          title={`Keyframe: ${kf.property} at ${kf.time.toFixed(2)}s`}
+        />
+      ))}
+
       {/* Right Trim Handle */}
       <div
         onMouseDown={(e) => handleMouseDown(e, 'trim-right')}
         className="absolute right-0 top-0 bottom-0 w-2.5 bg-white/20 hover:bg-white/50 rounded-r cursor-ew-resize opacity-0 group-hover:opacity-100 transition-opacity"
-        title="Trim layer end"
+        title="Trim end"
       />
     </div>
   );

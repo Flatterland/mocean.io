@@ -1,7 +1,7 @@
 import { create } from 'zustand';
-import { CanvasSettings, ResolutionPreset, RESOLUTION_PRESETS } from '../types/project';
-import { Layer, ShapeType, TextProperties, LayerStyle } from '../types/layer';
-import { MotionPresetType } from '../types/animation';
+import { CanvasSettings, ResolutionPreset, RESOLUTION_PRESETS, WorkspaceLayout, ActiveTool } from '../types/project';
+import { Layer, ShapeType, TextProperties, LayerStyle, VideoProperties, MotionPathPoint } from '../types/layer';
+import { MotionPresetType, AnimatableProperty, Keyframe, EasingType } from '../types/animation';
 import { PROJECT_TEMPLATES } from '../templates/projectTemplates';
 
 interface ProjectState {
@@ -11,18 +11,26 @@ interface ProjectState {
   layers: Layer[];
   selectedLayerIds: string[];
 
+  // Workspace & Tools
+  workspace: WorkspaceLayout;
+  activeTool: ActiveTool;
+  isRecordingMotionPath: boolean;
+  recordingLayerId: string | null;
+
   // Playhead & playback
   currentTime: number;
   isPlaying: boolean;
   isLooping: boolean;
+  playbackSpeed: number; // 1, 2, 4, -1, -2, -4 for J-K-L shuttle
   zoom: number; // timeline pixels per second
   timelineScrollLeft: number;
 
   // Viewport
-  viewportZoom: number; // 0.2 to 3.0
+  viewportZoom: number;
   viewportPan: { x: number; y: number };
   showSafeAreas: boolean;
   showGrid: boolean;
+  showMinimap: boolean;
 
   // History for Undo/Redo
   history: { layers: Layer[]; canvas: CanvasSettings }[];
@@ -37,12 +45,20 @@ interface ProjectState {
   setProjectName: (name: string) => void;
   setCanvasSettings: (settings: Partial<CanvasSettings>) => void;
   setResolutionPreset: (preset: ResolutionPreset) => void;
+  setWorkspace: (ws: WorkspaceLayout) => void;
+  setActiveTool: (tool: ActiveTool) => void;
 
-  // Playhead actions
+  // Playhead & Shuttle actions
   setCurrentTime: (time: number) => void;
   setIsPlaying: (playing: boolean) => void;
   togglePlay: () => void;
   setIsLooping: (looping: boolean) => void;
+  setPlaybackSpeed: (speed: number) => void;
+  shuttleForward: () => void; // L key in Premiere
+  shuttleReverse: () => void; // J key in Premiere
+  shuttlePause: () => void;   // K key in Premiere
+  setMarkIn: (time?: number) => void; // I key
+  setMarkOut: (time?: number) => void; // O key
   setZoom: (zoom: number) => void;
   setTimelineScrollLeft: (scroll: number) => void;
 
@@ -51,6 +67,7 @@ interface ProjectState {
   setViewportPan: (pan: { x: number; y: number }) => void;
   toggleSafeAreas: () => void;
   toggleGrid: () => void;
+  toggleMinimap: () => void;
 
   // Selection actions
   setSelectedLayerIds: (ids: string[]) => void;
@@ -61,12 +78,23 @@ interface ProjectState {
   addTextLayer: (customText?: string, preset?: MotionPresetType) => Layer;
   addShapeLayer: (shapeType: ShapeType, preset?: MotionPresetType) => Layer;
   addImageLayer: (src: string, name?: string) => Layer;
+  addVideoLayer: (src: string, name?: string) => Layer;
   updateLayer: (id: string, updates: Partial<Layer> | ((prev: Layer) => Partial<Layer>)) => void;
   deleteLayers: (ids: string[]) => void;
   duplicateLayers: (ids: string[]) => void;
-  splitLayerAtPlayhead: (id: string) => void;
+  splitLayerAtPlayhead: (id: string, splitTime?: number) => void;
   reorderLayerTrack: (layerId: string, newTrackIndex: number) => void;
   alignSelectedLayers: (alignment: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom') => void;
+
+  // Keyframe Management
+  addKeyframe: (layerId: string, property: AnimatableProperty, time: number, value: number, easing?: EasingType) => void;
+  removeKeyframe: (layerId: string, property: AnimatableProperty, keyframeId: string) => void;
+
+  // Mouse Path Recording
+  startMotionPathRecording: (layerId: string) => void;
+  addMotionPathPoint: (x: number, y: number, time: number) => void;
+  finishMotionPathRecording: () => void;
+  clearMotionPath: (layerId: string) => void;
 
   // Preset quick apply
   applyPresetToSelected: (presetId: MotionPresetType, category: 'in' | 'out' | 'loop') => void;
@@ -85,16 +113,6 @@ interface ProjectState {
   setTemplatesModalOpen: (open: boolean) => void;
 }
 
-const DEFAULT_CANVAS: CanvasSettings = {
-  width: 1920,
-  height: 1080,
-  fps: 30,
-  duration: 5.0,
-  backgroundColor: '#090a0f',
-  aspectRatio: '16:9',
-  preset: '1080p',
-};
-
 const DEFAULT_STYLE: LayerStyle = {
   fill: '#ffffff',
   stroke: '',
@@ -108,22 +126,31 @@ const DEFAULT_STYLE: LayerStyle = {
   blendMode: 'source-over',
 };
 
+const SAVED_WORKSPACE = (localStorage.getItem('mocean_workspace') as WorkspaceLayout) || 'default';
+
 export const useProjectStore = create<ProjectState>((set, get) => ({
   projectName: 'Untitled Motion',
   canvas: { ...PROJECT_TEMPLATES[0].canvas },
   layers: JSON.parse(JSON.stringify(PROJECT_TEMPLATES[0].layers)),
   selectedLayerIds: [PROJECT_TEMPLATES[0].layers[1].id],
 
+  workspace: SAVED_WORKSPACE,
+  activeTool: 'select',
+  isRecordingMotionPath: false,
+  recordingLayerId: null,
+
   currentTime: 1.2,
   isPlaying: false,
   isLooping: true,
-  zoom: 120, // 120px per second
+  playbackSpeed: 1,
+  zoom: 120,
   timelineScrollLeft: 0,
 
   viewportZoom: 0.7,
   viewportPan: { x: 0, y: 0 },
   showSafeAreas: false,
   showGrid: true,
+  showMinimap: true,
 
   history: [{ layers: JSON.parse(JSON.stringify(PROJECT_TEMPLATES[0].layers)), canvas: { ...PROJECT_TEMPLATES[0].canvas } }],
   historyIndex: 0,
@@ -156,6 +183,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     }));
   },
 
+  setWorkspace: (ws) => {
+    localStorage.setItem('mocean_workspace', ws);
+    set({ workspace: ws });
+  },
+
+  setActiveTool: (tool) => set({ activeTool: tool }),
+
   setCurrentTime: (time) => {
     const { canvas } = get();
     const clamped = Math.max(0, Math.min(canvas.duration, time));
@@ -163,8 +197,47 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   },
 
   setIsPlaying: (playing) => set({ isPlaying: playing }),
-  togglePlay: () => set((state) => ({ isPlaying: !state.isPlaying })),
+  togglePlay: () => set((state) => ({ isPlaying: !state.isPlaying, playbackSpeed: 1 })),
   setIsLooping: (looping) => set({ isLooping: looping }),
+  setPlaybackSpeed: (speed) => set({ playbackSpeed: speed }),
+
+  // Premiere Shuttle J-K-L Controls
+  shuttleForward: () => {
+    const { isPlaying, playbackSpeed } = get();
+    if (!isPlaying) {
+      set({ isPlaying: true, playbackSpeed: 1 });
+    } else {
+      const nextSpeed = playbackSpeed > 0 ? Math.min(4, playbackSpeed * 2) : 1;
+      set({ playbackSpeed: nextSpeed });
+    }
+  },
+
+  shuttleReverse: () => {
+    const { isPlaying, playbackSpeed } = get();
+    if (!isPlaying) {
+      set({ isPlaying: true, playbackSpeed: -1 });
+    } else {
+      const nextSpeed = playbackSpeed < 0 ? Math.max(-4, playbackSpeed * 2) : -1;
+      set({ playbackSpeed: nextSpeed });
+    }
+  },
+
+  shuttlePause: () => {
+    set({ isPlaying: false, playbackSpeed: 1 });
+  },
+
+  setMarkIn: (time) => {
+    const { currentTime, canvas } = get();
+    const mark = time !== undefined ? time : currentTime;
+    set({ canvas: { ...canvas, markIn: mark } });
+  },
+
+  setMarkOut: (time) => {
+    const { currentTime, canvas } = get();
+    const mark = time !== undefined ? time : currentTime;
+    set({ canvas: { ...canvas, markOut: mark } });
+  },
+
   setZoom: (zoom) => set({ zoom: Math.max(40, Math.min(400, zoom)) }),
   setTimelineScrollLeft: (scroll) => set({ timelineScrollLeft: scroll }),
 
@@ -172,6 +245,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   setViewportPan: (pan) => set({ viewportPan: pan }),
   toggleSafeAreas: () => set((state) => ({ showSafeAreas: !state.showSafeAreas })),
   toggleGrid: () => set((state) => ({ showGrid: !state.showGrid })),
+  toggleMinimap: () => set((state) => ({ showMinimap: !state.showMinimap })),
 
   setSelectedLayerIds: (ids) => set({ selectedLayerIds: ids }),
 
@@ -235,9 +309,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       },
       text: {
         text: customText,
-        fontFamily: 'Montserrat',
+        fontFamily: 'Lato',
         fontSize: 64,
-        fontWeight: '800',
+        fontWeight: '900',
         fontStyle: 'normal',
         textAlign: 'center',
         letterSpacing: 2,
@@ -380,6 +454,67 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     return newLayer;
   },
 
+  addVideoLayer: (src: string, name = 'Video Layer') => {
+    get().saveHistory();
+    const { canvas, layers, currentTime } = get();
+    const newId = `video-${Date.now()}`;
+    const nextTrack = layers.length;
+
+    const newLayer: Layer = {
+      id: newId,
+      name,
+      type: 'video',
+      visible: true,
+      locked: false,
+      startTime: Math.max(0, currentTime),
+      endTime: Math.min(canvas.duration, currentTime + 5.0),
+      trackIndex: nextTrack,
+      transform: {
+        x: canvas.width / 2,
+        y: canvas.height / 2,
+        width: 640,
+        height: 360,
+        scaleX: 1,
+        scaleY: 1,
+        rotation: 0,
+        anchorX: 0.5,
+        anchorY: 0.5,
+      },
+      style: {
+        ...DEFAULT_STYLE,
+        shadowColor: 'rgba(0,0,0,0.6)',
+        shadowBlur: 25,
+      },
+      animations: {
+        inPreset: 'image_drop_bounce',
+        inDuration: 0.6,
+        inStagger: 0,
+        loopSpeed: 1,
+        loopIntensity: 1,
+        outPreset: 'text_out_fade_down',
+        outDuration: 0.5,
+      },
+      video: {
+        src,
+        originalWidth: 640,
+        originalHeight: 360,
+        aspectRatioLock: true,
+        volume: 1.0,
+        muted: false,
+        playbackRate: 1.0,
+        trimStart: 0,
+        trimEnd: 5.0,
+      },
+    };
+
+    set((state) => ({
+      layers: [...state.layers, newLayer],
+      selectedLayerIds: [newId],
+    }));
+
+    return newLayer;
+  },
+
   updateLayer: (id, updates) => {
     set((state) => ({
       layers: state.layers.map((l) => {
@@ -394,6 +529,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           text: newProps.text && l.text ? { ...l.text, ...newProps.text } : (newProps.text || l.text),
           shape: newProps.shape && l.shape ? { ...l.shape, ...newProps.shape } : (newProps.shape || l.shape),
           image: newProps.image && l.image ? { ...l.image, ...newProps.image } : (newProps.image || l.image),
+          video: newProps.video && l.video ? { ...l.video, ...newProps.video } : (newProps.video || l.video),
         };
       }),
     }));
@@ -439,12 +575,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     }));
   },
 
-  splitLayerAtPlayhead: (id) => {
+  splitLayerAtPlayhead: (id, splitTime) => {
     const { currentTime, layers } = get();
+    const targetTime = splitTime !== undefined ? splitTime : currentTime;
     const layer = layers.find((l) => l.id === id);
     if (!layer) return;
 
-    if (currentTime <= layer.startTime + 0.1 || currentTime >= layer.endTime - 0.1) return;
+    if (targetTime <= layer.startTime + 0.1 || targetTime >= layer.endTime - 0.1) return;
 
     get().saveHistory();
 
@@ -454,15 +591,15 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     const part2: Layer = {
       ...JSON.parse(JSON.stringify(layer)),
       id: splitId,
-      name: `${layer.name} (Part 2)`,
-      startTime: currentTime,
+      name: `${layer.name} (Cut)`,
+      startTime: targetTime,
       endTime: originalEnd,
       trackIndex: layers.length,
     };
 
     set((state) => ({
       layers: [
-        ...state.layers.map((l) => (l.id === id ? { ...l, endTime: currentTime } : l)),
+        ...state.layers.map((l) => (l.id === id ? { ...l, endTime: targetTime } : l)),
         part2,
       ],
       selectedLayerIds: [splitId],
@@ -477,7 +614,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   alignSelectedLayers: (alignment) => {
     get().saveHistory();
-    const { canvas, selectedLayerIds, layers } = get();
+    const { canvas, selectedLayerIds } = get();
     if (selectedLayerIds.length === 0) return;
 
     set((state) => ({
@@ -507,6 +644,127 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         }
 
         return { ...l, transform };
+      }),
+    }));
+  },
+
+  // Keyframe Management
+  addKeyframe: (layerId, property, time, value, easing = 'easeOutQuad') => {
+    get().saveHistory();
+    set((state) => ({
+      layers: state.layers.map((l) => {
+        if (l.id !== layerId) return l;
+
+        const propertyTracks = l.animations.propertyTracks ? [...l.animations.propertyTracks] : [];
+        let track = propertyTracks.find((t) => t.property === property);
+
+        const newKf: Keyframe = {
+          id: `kf-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          time,
+          value,
+          easing,
+        };
+
+        if (!track) {
+          track = { property, keyframes: [newKf] };
+          propertyTracks.push(track);
+        } else {
+          // Replace existing at same timestamp or insert new
+          const filtered = track.keyframes.filter((k) => Math.abs(k.time - time) > 0.05);
+          track.keyframes = [...filtered, newKf].sort((a, b) => a.time - b.time);
+        }
+
+        return {
+          ...l,
+          animations: {
+            ...l.animations,
+            propertyTracks,
+          },
+        };
+      }),
+    }));
+  },
+
+  removeKeyframe: (layerId, property, keyframeId) => {
+    get().saveHistory();
+    set((state) => ({
+      layers: state.layers.map((l) => {
+        if (l.id !== layerId || !l.animations.propertyTracks) return l;
+
+        const propertyTracks = l.animations.propertyTracks.map((t) => {
+          if (t.property !== property) return t;
+          return {
+            ...t,
+            keyframes: t.keyframes.filter((k) => k.id !== keyframeId),
+          };
+        });
+
+        return {
+          ...l,
+          animations: {
+            ...l.animations,
+            propertyTracks,
+          },
+        };
+      }),
+    }));
+  },
+
+  // Mouse Motion Path Recording
+  startMotionPathRecording: (layerId) => {
+    set({
+      isRecordingMotionPath: true,
+      recordingLayerId: layerId,
+      activeTool: 'motion-record',
+    });
+  },
+
+  addMotionPathPoint: (x, y, time) => {
+    const { recordingLayerId } = get();
+    if (!recordingLayerId) return;
+
+    set((state) => ({
+      layers: state.layers.map((l) => {
+        if (l.id !== recordingLayerId) return l;
+
+        const existingPoints = l.animations.motionPath?.points || [];
+        const newPoint: MotionPathPoint = { x: Math.round(x), y: Math.round(y), time };
+
+        return {
+          ...l,
+          animations: {
+            ...l.animations,
+            motionPath: {
+              points: [...existingPoints, newPoint],
+              showPathTrail: true,
+            },
+          },
+        };
+      }),
+    }));
+  },
+
+  finishMotionPathRecording: () => {
+    get().saveHistory();
+    set({
+      isRecordingMotionPath: false,
+      recordingLayerId: null,
+      activeTool: 'select',
+    });
+  },
+
+  clearMotionPath: (layerId) => {
+    get().saveHistory();
+    set((state) => ({
+      layers: state.layers.map((l) => {
+        if (l.id !== layerId) return l;
+        return {
+          ...l,
+          animations: {
+            ...l.animations,
+            motionPath: undefined,
+          },
+        };
       }),
     }));
   },

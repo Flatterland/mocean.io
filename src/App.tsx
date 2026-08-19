@@ -11,7 +11,11 @@ import { useProjectStore } from './store/projectStore';
 
 export function App() {
   const {
+    workspace,
     togglePlay,
+    shuttleForward,
+    shuttleReverse,
+    shuttlePause,
     undo,
     redo,
     selectedLayerIds,
@@ -19,12 +23,14 @@ export function App() {
     duplicateLayers,
     splitLayerAtPlayhead,
     setExportModalOpen,
+    setActiveTool,
+    setMarkIn,
+    setMarkOut,
   } = useProjectStore();
 
-  // Global Keyboard Shortcuts
+  // Premiere-like Global Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore shortcut when typing in inputs / textareas
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
         return;
@@ -34,6 +40,55 @@ export function App() {
       if (e.code === 'Space') {
         e.preventDefault();
         togglePlay();
+      }
+      // Premiere J-K-L Shuttle Controls
+      else if (e.key.toLowerCase() === 'j' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        shuttleReverse();
+      }
+      else if (e.key.toLowerCase() === 'k' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        shuttlePause();
+      }
+      else if (e.key.toLowerCase() === 'l' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        shuttleForward();
+      }
+      // Premiere Tool Selection: V, C, H, Z
+      else if (e.key.toLowerCase() === 'v' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        setActiveTool('select');
+      }
+      else if (e.key.toLowerCase() === 'c' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        setActiveTool('razor');
+      }
+      else if (e.key.toLowerCase() === 'h' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        setActiveTool('hand');
+      }
+      else if (e.key.toLowerCase() === 'z' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        setActiveTool('zoom');
+      }
+      // In/Out Marking: I, O
+      else if (e.key.toLowerCase() === 'i' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        setMarkIn();
+      }
+      else if (e.key.toLowerCase() === 'o' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        setMarkOut();
+      }
+      // Ctrl+K or S: Split layer at playhead
+      else if (
+        (e.key.toLowerCase() === 's' && !e.ctrlKey && !e.metaKey) ||
+        ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k')
+      ) {
+        if (selectedLayerIds.length > 0) {
+          e.preventDefault();
+          splitLayerAtPlayhead(selectedLayerIds[0]);
+        }
       }
       // Ctrl+Z: Undo
       else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
@@ -48,7 +103,7 @@ export function App() {
         e.preventDefault();
         redo();
       }
-      // Delete / Backspace: Delete selected
+      // Delete / Backspace
       else if (e.key === 'Delete' || e.key === 'Backspace') {
         if (selectedLayerIds.length > 0) {
           e.preventDefault();
@@ -62,13 +117,6 @@ export function App() {
           duplicateLayers(selectedLayerIds);
         }
       }
-      // S: Split layer at playhead
-      else if (e.key.toLowerCase() === 's' && !e.ctrlKey && !e.metaKey) {
-        if (selectedLayerIds.length > 0) {
-          e.preventDefault();
-          splitLayerAtPlayhead(selectedLayerIds[0]);
-        }
-      }
       // Ctrl+E: Open 4K Export Modal
       else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'e') {
         e.preventDefault();
@@ -78,24 +126,36 @@ export function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedLayerIds, togglePlay, undo, redo, deleteLayers, duplicateLayers, splitLayerAtPlayhead, setExportModalOpen]);
+  }, [
+    selectedLayerIds,
+    togglePlay,
+    shuttleForward,
+    shuttleReverse,
+    shuttlePause,
+    undo,
+    redo,
+    deleteLayers,
+    duplicateLayers,
+    splitLayerAtPlayhead,
+    setExportModalOpen,
+    setActiveTool,
+    setMarkIn,
+    setMarkOut,
+  ]);
 
   return (
     <div className="flex flex-col h-screen w-screen bg-[#090a0f] text-slate-100 overflow-hidden select-none font-sans">
-      {/* 1. Top Navigation Bar */}
       <TopNav />
 
-      {/* 2. Middle Main Workspace (Left Sidebar + Center Canvas Viewport + Right Inspector) */}
+      {/* Main Workspace Area with dynamic workspace layout responsiveness */}
       <div className="flex-1 flex overflow-hidden">
-        <LeftSidebar />
+        {workspace !== 'minimal' && <LeftSidebar />}
         <Viewport />
-        <RightInspector />
+        {workspace !== 'minimal' && <RightInspector />}
       </div>
 
-      {/* 3. Bottom Multi-Track Timeline */}
       <Timeline />
 
-      {/* Modals */}
       <ExportModal />
       <SettingsModal />
       <TemplatesModal />

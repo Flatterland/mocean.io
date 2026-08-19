@@ -2,6 +2,10 @@ export type AspectRatio = '16:9' | '9:16' | '1:1' | '4:5' | '21:9' | 'custom';
 
 export type ResolutionPreset = '4K' | '1440p' | '1080p' | '720p' | '4K_Vertical' | '1080p_Vertical' | 'Square_HD' | 'Custom';
 
+export type WorkspaceLayout = 'default' | 'timeline' | 'typography' | 'minimal';
+
+export type ActiveTool = 'select' | 'razor' | 'hand' | 'zoom' | 'motion-record';
+
 export interface CanvasSettings {
   width: number;
   height: number;
@@ -10,6 +14,8 @@ export interface CanvasSettings {
   backgroundColor: string;
   aspectRatio: AspectRatio;
   preset: ResolutionPreset;
+  markIn?: number;
+  markOut?: number;
 }
 
 export interface ExportSettings {
@@ -18,8 +24,8 @@ export interface ExportSettings {
   height: number;
   fps: number;
   format: 'mp4' | 'webm' | 'gif' | 'png_sequence';
-  codec: 'avc1.640033' | 'avc1.4d002a' | 'vp9' | 'vp8'; // High profile H.264 up to 4K
-  bitrateMbps: number; // e.g. 25-50 Mbps for 4K
+  codec: 'avc1.640033' | 'avc1.4d002a' | 'vp9' | 'vp8';
+  bitrateMbps: number;
 }
 
 export const RESOLUTION_PRESETS: Record<ResolutionPreset, { name: string; width: number; height: number; aspectRatio: AspectRatio }> = {

@@ -1,19 +1,27 @@
 import React from 'react';
 import {
-  Play,
-  Pause,
   Undo2,
   Redo2,
   Download,
   Sliders,
   LayoutTemplate,
   Sparkles,
-  Layers,
   Ratio,
-  Maximize2
+  Maximize2,
+  LayoutDashboard,
+  Film,
+  Type,
+  Maximize
 } from 'lucide-react';
 import { useProjectStore } from '../../store/projectStore';
-import { RESOLUTION_PRESETS, ResolutionPreset } from '../../types/project';
+import { RESOLUTION_PRESETS, ResolutionPreset, WorkspaceLayout } from '../../types/project';
+
+const WORKSPACES: { id: WorkspaceLayout; name: string; icon: React.ReactNode }[] = [
+  { id: 'default', name: 'Motion Studio', icon: <LayoutDashboard className="w-3.5 h-3.5 text-indigo-400" /> },
+  { id: 'timeline', name: 'Timeline Focus', icon: <Film className="w-3.5 h-3.5 text-emerald-400" /> },
+  { id: 'typography', name: 'Typography & Design', icon: <Type className="w-3.5 h-3.5 text-pink-400" /> },
+  { id: 'minimal', name: 'Minimal Preview', icon: <Maximize className="w-3.5 h-3.5 text-cyan-400" /> },
+];
 
 export const TopNav: React.FC = () => {
   const {
@@ -21,8 +29,8 @@ export const TopNav: React.FC = () => {
     setProjectName,
     canvas,
     setResolutionPreset,
-    isPlaying,
-    togglePlay,
+    workspace,
+    setWorkspace,
     undo,
     redo,
     historyIndex,
@@ -55,18 +63,17 @@ export const TopNav: React.FC = () => {
 
         <div className="h-4 w-[1px] bg-slate-800" />
 
-        {/* Project Name Editor */}
         <input
           type="text"
           value={projectName}
           onChange={(e) => setProjectName(e.target.value)}
-          className="bg-transparent hover:bg-slate-800/60 focus:bg-slate-900 px-2 py-1 rounded text-sm text-slate-200 font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all max-w-[200px]"
+          className="bg-transparent hover:bg-slate-800/60 focus:bg-slate-900 px-2 py-1 rounded text-sm text-slate-200 font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all max-w-[180px]"
           title="Click to rename project"
         />
       </div>
 
-      {/* Center: Playback & Resolution & Quick Controls */}
-      <div className="flex items-center gap-3">
+      {/* Center: Workspaces, Resolution, Tools */}
+      <div className="flex items-center gap-2.5">
         {/* Undo / Redo */}
         <div className="flex items-center bg-[#181b24] p-1 rounded-lg border border-[#222734]">
           <button
@@ -89,6 +96,22 @@ export const TopNav: React.FC = () => {
           >
             <Redo2 className="w-4 h-4" />
           </button>
+        </div>
+
+        {/* Workspace Layout Selector */}
+        <div className="flex items-center gap-1.5 bg-[#181b24] px-2.5 py-1 rounded-lg border border-[#222734] text-xs">
+          <LayoutDashboard className="w-3.5 h-3.5 text-indigo-400" />
+          <select
+            value={workspace}
+            onChange={(e) => setWorkspace(e.target.value as WorkspaceLayout)}
+            className="bg-transparent text-slate-200 font-medium focus:outline-none cursor-pointer"
+          >
+            {WORKSPACES.map((ws) => (
+              <option key={ws.id} value={ws.id} className="bg-[#11131a] text-slate-200">
+                Workspace: {ws.name}
+              </option>
+            ))}
+          </select>
         </div>
 
         {/* Resolution Preset Dropdown */}
@@ -142,7 +165,7 @@ export const TopNav: React.FC = () => {
 
         <button
           onClick={() => setExportModalOpen(true)}
-          className="flex items-center gap-2 bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-600 hover:from-indigo-600 hover:via-purple-600 hover:to-indigo-700 text-white px-4 py-2 rounded-lg text-xs font-semibold shadow-glow-accent hover:shadow-lg transition-all transform active:scale-95"
+          className="flex items-center gap-2 bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-600 hover:from-indigo-600 hover:via-purple-600 hover:to-indigo-700 text-white px-4 py-2 rounded-lg text-xs font-semibold shadow-glow-accent hover:shadow-lg transition-all active:scale-95"
         >
           <Download className="w-4 h-4" />
           <span>Export 4K Video</span>

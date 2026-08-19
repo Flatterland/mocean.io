@@ -6,6 +6,8 @@ import { degreesToRadians, Point } from '../utils/math2d';
 
 // Image cache to prevent reloading during playback and export
 const imageCache = new Map<string, HTMLImageElement>();
+// Video element cache for synchronized playback
+const videoCache = new Map<string, HTMLVideoElement>();
 
 export function getCachedImage(src: string): HTMLImageElement | null {
   if (imageCache.has(src)) {
@@ -19,6 +21,20 @@ export function getCachedImage(src: string): HTMLImageElement | null {
   return null;
 }
 
+export function getCachedVideo(src: string): HTMLVideoElement {
+  if (videoCache.has(src)) {
+    return videoCache.get(src)!;
+  }
+  const video = document.createElement('video');
+  video.crossOrigin = 'anonymous';
+  video.src = src;
+  video.muted = true;
+  video.playsInline = true;
+  video.preload = 'auto';
+  videoCache.set(src, video);
+  return video;
+}
+
 export interface RenderOptions {
   ctx: CanvasRenderingContext2D;
   canvasSettings: CanvasSettings;
@@ -27,7 +43,7 @@ export interface RenderOptions {
   selectedLayerIds?: string[];
   showGizmos?: boolean;
   showSafeAreas?: boolean;
-  viewportScale?: number; // scale multiplier for stage
+  viewportScale?: number;
 }
 
 export function renderFrame(options: RenderOptions) {
@@ -49,7 +65,7 @@ export function renderFrame(options: RenderOptions) {
   ctx.fillStyle = backgroundColor || '#090a0f';
   ctx.fillRect(0, 0, width, height);
 
-  // 2. Sort layers by trackIndex / z-order (ascending order: lower index = background, higher index = foreground)
+  // 2. Sort layers by trackIndex / z-order
   const sortedLayers = [...layers].sort((a, b) => a.trackIndex - b.trackIndex);
 
   // 3. Render active layers
@@ -62,12 +78,22 @@ export function renderFrame(options: RenderOptions) {
     renderLayer(ctx, state, currentTime);
   }
 
-  // 4. Safe area guides (if enabled in viewport)
+  // 4. Render motion path trail for selected layers (if enabled)
+  if (showGizmos) {
+    for (const layerId of selectedLayerIds) {
+      const targetLayer = layers.find((l) => l.id === layerId);
+      if (targetLayer && targetLayer.animations.motionPath?.points?.length) {
+        renderMotionPathTrail(ctx, targetLayer.animations.motionPath.points);
+      }
+    }
+  }
+
+  // 5. Safe area guides (if enabled)
   if (showSafeAreas) {
     renderSafeAreas(ctx, width, height);
   }
 
-  // 5. Gizmos & Selection overlays
+  // 6. Gizmos & Selection overlays
   if (showGizmos && selectedLayerIds.length > 0) {
     for (const layerId of selectedLayerIds) {
       const targetLayer = layers.find((l) => l.id === layerId);
@@ -86,16 +112,13 @@ function renderLayer(ctx: CanvasRenderingContext2D, state: AnimatedLayerState, c
 
   ctx.save();
 
-  // Apply layer blend mode and global opacity
   ctx.globalAlpha = style.opacity;
   ctx.globalCompositeOperation = style.blendMode || 'source-over';
 
-  // Apply filters (blur)
   if (style.blur > 0) {
     ctx.filter = `blur(${style.blur}px)`;
   }
 
-  // Apply shadow
   if (style.shadowBlur > 0) {
     ctx.shadowColor = style.shadowColor || 'rgba(0,0,0,0.5)';
     ctx.shadowBlur = style.shadowBlur;
@@ -103,7 +126,6 @@ function renderLayer(ctx: CanvasRenderingContext2D, state: AnimatedLayerState, c
     ctx.shadowOffsetY = style.shadowOffsetY || 0;
   }
 
-  // Transform coordinates: Translate to center + rotate + scale + anchor
   const posX = transform.x + (glitchOffset?.x || 0);
   const posY = transform.y + (glitchOffset?.y || 0);
 
@@ -111,7 +133,6 @@ function renderLayer(ctx: CanvasRenderingContext2D, state: AnimatedLayerState, c
   ctx.rotate(degreesToRadians(transform.rotation));
   ctx.scale(transform.scaleX, transform.scaleY);
 
-  // Mask wipe clipping if applicable
   if (maskWipeProgress < 1) {
     ctx.beginPath();
     const clipWidth = transform.width * maskWipeProgress;
@@ -119,7 +140,6 @@ function renderLayer(ctx: CanvasRenderingContext2D, state: AnimatedLayerState, c
     ctx.clip();
   }
 
-  // Render specific layer type
   switch (layer.type) {
     case 'text':
       renderTextLayer(ctx, state, currentTime);
@@ -129,6 +149,9 @@ function renderLayer(ctx: CanvasRenderingContext2D, state: AnimatedLayerState, c
       break;
     case 'image':
       renderImageLayer(ctx, state);
+      break;
+    case 'video':
+      renderVideoLayer(ctx, state, currentTime);
       break;
     default:
       break;
@@ -148,7 +171,6 @@ function renderTextLayer(ctx: CanvasRenderingContext2D, state: AnimatedLayerStat
   ctx.textBaseline = 'middle';
   ctx.textAlign = 'center';
 
-  // Create gradient fill if configured
   let fillStyle: string | CanvasGradient = style.fill;
   if (style.gradient && style.gradient.stops.length > 0) {
     const grad = ctx.createLinearGradient(-layout.totalWidth / 2, 0, layout.totalWidth / 2, 0);
@@ -170,11 +192,9 @@ function renderTextLayer(ctx: CanvasRenderingContext2D, state: AnimatedLayerStat
     if (g.rotation !== 0) ctx.rotate(degreesToRadians(g.rotation));
     if (g.scaleX !== 1 || g.scaleY !== 1) ctx.scale(g.scaleX, g.scaleY);
 
-    // Fill
     ctx.fillStyle = fillStyle;
     ctx.fillText(g.char, 0, 0);
 
-    // Stroke
     if (style.strokeWidth > 0 && style.stroke) {
       ctx.strokeStyle = style.stroke;
       ctx.lineWidth = style.strokeWidth;
@@ -235,7 +255,6 @@ function renderShapeLayer(ctx: CanvasRenderingContext2D, state: AnimatedLayerSta
     ctx.closePath();
   }
 
-  // Apply fill
   if (style.fill) {
     let fillStyle: string | CanvasGradient = style.fill;
     if (style.gradient && style.gradient.stops.length > 0) {
@@ -247,7 +266,6 @@ function renderShapeLayer(ctx: CanvasRenderingContext2D, state: AnimatedLayerSta
     ctx.fill();
   }
 
-  // Apply stroke
   if (style.strokeWidth > 0 && style.stroke) {
     ctx.strokeStyle = style.stroke;
     ctx.lineWidth = style.strokeWidth;
@@ -269,11 +287,63 @@ function renderImageLayer(ctx: CanvasRenderingContext2D, state: AnimatedLayerSta
     const h = transform.height;
     ctx.drawImage(img, -w / 2, -h / 2, w, h);
   } else {
-    // Render placeholder frame while loading
     ctx.strokeStyle = 'rgba(99, 102, 241, 0.4)';
     ctx.lineWidth = 2;
     ctx.strokeRect(-transform.width / 2, -transform.height / 2, transform.width, transform.height);
   }
+}
+
+function renderVideoLayer(ctx: CanvasRenderingContext2D, state: AnimatedLayerState, currentTime: number) {
+  const { layer, transform } = state;
+  if (!layer.video?.src) return;
+
+  const video = getCachedVideo(layer.video.src);
+  const w = transform.width;
+  const h = transform.height;
+
+  // Calculate synchronized video seek time
+  const localTime = Math.max(0, currentTime - layer.startTime);
+  const targetSeekTime = (layer.video.trimStart || 0) + localTime * (layer.video.playbackRate || 1.0);
+
+  if (video.readyState >= 2) {
+    // Only seek if difference is noticeable to avoid buffering stalls
+    if (Math.abs(video.currentTime - targetSeekTime) > 0.08) {
+      video.currentTime = targetSeekTime;
+    }
+    ctx.drawImage(video, -w / 2, -h / 2, w, h);
+  } else {
+    ctx.fillStyle = '#181b24';
+    ctx.fillRect(-w / 2, -h / 2, w, h);
+    ctx.strokeStyle = '#6366f1';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(-w / 2, -h / 2, w, h);
+  }
+}
+
+function renderMotionPathTrail(ctx: CanvasRenderingContext2D, points: { x: number; y: number }[]) {
+  if (points.length < 2) return;
+
+  ctx.save();
+  ctx.strokeStyle = 'rgba(99, 102, 241, 0.8)';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([4, 4]);
+
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  for (let i = 1; i < points.length; i++) {
+    ctx.lineTo(points[i].x, points[i].y);
+  }
+  ctx.stroke();
+
+  // Draw points
+  ctx.fillStyle = '#00f2fe';
+  points.forEach((pt, index) => {
+    ctx.beginPath();
+    ctx.arc(pt.x, pt.y, index === 0 || index === points.length - 1 ? 5 : 3, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  ctx.restore();
 }
 
 function renderSafeAreas(ctx: CanvasRenderingContext2D, width: number, height: number) {
@@ -282,14 +352,12 @@ function renderSafeAreas(ctx: CanvasRenderingContext2D, width: number, height: n
   ctx.lineWidth = 1;
   ctx.setLineDash([6, 6]);
 
-  // Action safe (90%)
   const actionX = width * 0.05;
   const actionY = height * 0.05;
   const actionW = width * 0.9;
   const actionH = height * 0.9;
   ctx.strokeRect(actionX, actionY, actionW, actionH);
 
-  // Title safe (80%)
   ctx.strokeStyle = 'rgba(255, 0, 127, 0.25)';
   const titleX = width * 0.1;
   const titleY = height * 0.1;
@@ -297,7 +365,6 @@ function renderSafeAreas(ctx: CanvasRenderingContext2D, width: number, height: n
   const titleH = height * 0.8;
   ctx.strokeRect(titleX, titleY, titleW, titleH);
 
-  // Center crosshair
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
   ctx.beginPath();
   ctx.moveTo(width / 2 - 20, height / 2);
@@ -318,13 +385,11 @@ function renderLayerGizmo(ctx: CanvasRenderingContext2D, state: AnimatedLayerSta
   ctx.translate(transform.x, transform.y);
   ctx.rotate(degreesToRadians(transform.rotation));
 
-  // Bounding box
   ctx.strokeStyle = '#6366f1';
   ctx.lineWidth = 1.5;
   ctx.setLineDash([]);
   ctx.strokeRect(-w / 2, -h / 2, w, h);
 
-  // 8 Resize handles
   const handleSize = 8;
   ctx.fillStyle = '#ffffff';
   ctx.strokeStyle = '#6366f1';
@@ -346,7 +411,6 @@ function renderLayerGizmo(ctx: CanvasRenderingContext2D, state: AnimatedLayerSta
     ctx.strokeRect(pos.x - handleSize / 2, pos.y - handleSize / 2, handleSize, handleSize);
   });
 
-  // Rotation stem & knob
   const rotDist = 24;
   ctx.beginPath();
   ctx.moveTo(0, -h / 2);
