@@ -27,16 +27,21 @@ export const Viewport: React.FC = () => {
   useEffect(() => {
     const updateSize = () => {
       if (containerRef.current) {
-        setDimensions({
-          width: containerRef.current.clientWidth,
-          height: containerRef.current.clientHeight,
-        });
+        const w = containerRef.current.clientWidth;
+        const h = containerRef.current.clientHeight;
+        setDimensions({ width: w, height: h });
+
+        const fitW = (w - 80) / canvas.width;
+        const fitH = (h - 80) / canvas.height;
+        const optimalZoom = Math.max(0.1, Math.min(1.0, Math.min(fitW, fitH)));
+        setViewportZoom(Math.round(optimalZoom * 100) / 100);
+        setViewportPan({ x: 0, y: 0 });
       }
     };
     updateSize();
     window.addEventListener('resize', updateSize);
     return () => window.removeEventListener('resize', updateSize);
-  }, []);
+  }, [canvas.width, canvas.height, setViewportZoom, setViewportPan]);
 
   return (
     <div

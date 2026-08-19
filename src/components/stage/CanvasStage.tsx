@@ -333,8 +333,12 @@ export const CanvasStage: React.FC = () => {
       <div
         className="relative shadow-2xl transition-transform ease-out shrink-0"
         style={{
-          width: canvas.width * viewportZoom,
-          height: canvas.height * viewportZoom,
+          width: `${Math.round(canvas.width * viewportZoom)}px`,
+          height: `${Math.round(canvas.height * viewportZoom)}px`,
+          minWidth: `${Math.round(canvas.width * viewportZoom)}px`,
+          minHeight: `${Math.round(canvas.height * viewportZoom)}px`,
+          maxWidth: `${Math.round(canvas.width * viewportZoom)}px`,
+          maxHeight: `${Math.round(canvas.height * viewportZoom)}px`,
           transform: `translate(${viewportPan.x}px, ${viewportPan.y}px)`,
           boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255,255,255,0.06)',
         }}
@@ -346,9 +350,9 @@ export const CanvasStage: React.FC = () => {
           style={{
             width: '100%',
             height: '100%',
-            aspectRatio: `${canvas.width} / ${canvas.height}`,
+            display: 'block',
           }}
-          className="block rounded-sm bg-[#090a0f]"
+          className="rounded-sm bg-[#090a0f]"
         />
       </div>
     </div>
