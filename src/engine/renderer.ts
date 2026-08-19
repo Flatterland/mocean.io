@@ -40,6 +40,7 @@ export interface RenderOptions {
   canvasSettings: CanvasSettings;
   layers: Layer[];
   currentTime: number;
+  isPlaying?: boolean;
   selectedLayerIds?: string[];
   showGizmos?: boolean;
   showSafeAreas?: boolean;
@@ -52,6 +53,7 @@ export function renderFrame(options: RenderOptions) {
     canvasSettings,
     layers,
     currentTime,
+    isPlaying = false,
     selectedLayerIds = [],
     showGizmos = false,
     showSafeAreas = false,
@@ -75,7 +77,7 @@ export function renderFrame(options: RenderOptions) {
     const state = computeLayerState(layer, currentTime);
     if (!state.isActive || state.style.opacity <= 0) continue;
 
-    renderLayer(ctx, state, currentTime);
+    renderLayer(ctx, state, currentTime, isPlaying);
   }
 
   // 4. Render motion path trail for selected layers (if enabled)
@@ -107,7 +109,12 @@ export function renderFrame(options: RenderOptions) {
   ctx.restore();
 }
 
-function renderLayer(ctx: CanvasRenderingContext2D, state: AnimatedLayerState, currentTime: number) {
+function renderLayer(
+  ctx: CanvasRenderingContext2D,
+  state: AnimatedLayerState,
+  currentTime: number,
+  isPlaying: boolean
+) {
   const { layer, transform, style, maskWipeProgress = 1, glitchOffset } = state;
 
   ctx.save();
@@ -151,7 +158,7 @@ function renderLayer(ctx: CanvasRenderingContext2D, state: AnimatedLayerState, c
       renderImageLayer(ctx, state);
       break;
     case 'video':
-      renderVideoLayer(ctx, state, currentTime);
+      renderVideoLayer(ctx, state, currentTime, isPlaying);
       break;
     default:
       break;
@@ -293,7 +300,12 @@ function renderImageLayer(ctx: CanvasRenderingContext2D, state: AnimatedLayerSta
   }
 }
 
-function renderVideoLayer(ctx: CanvasRenderingContext2D, state: AnimatedLayerState, currentTime: number) {
+function renderVideoLayer(
+  ctx: CanvasRenderingContext2D,
+  state: AnimatedLayerState,
+  currentTime: number,
+  isPlaying: boolean
+) {
   const { layer, transform } = state;
   if (!layer.video?.src) return;
 
@@ -305,19 +317,42 @@ function renderVideoLayer(ctx: CanvasRenderingContext2D, state: AnimatedLayerSta
   const localTime = Math.max(0, currentTime - layer.startTime);
   const targetSeekTime = (layer.video.trimStart || 0) + localTime * (layer.video.playbackRate || 1.0);
 
-  if (video.readyState >= 2) {
-    // Only seek if difference is noticeable to avoid buffering stalls
-    if (Math.abs(video.currentTime - targetSeekTime) > 0.08) {
+  if (isPlaying) {
+    if (video.paused) {
+      video.play().catch(() => {});
+    }
+    // Only adjust seek time if video drifted by > 0.25s to avoid continuous seeking stutter
+    if (Math.abs(video.currentTime - targetSeekTime) > 0.25) {
       video.currentTime = targetSeekTime;
     }
-    ctx.drawImage(video, -w / 2, -h / 2, w, h);
   } else {
-    ctx.fillStyle = '#181b24';
-    ctx.fillRect(-w / 2, -h / 2, w, h);
-    ctx.strokeStyle = '#6366f1';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(-w / 2, -h / 2, w, h);
+    if (!video.paused) {
+      video.pause();
+    }
+    // Smooth scrubbing when paused
+    if (Math.abs(video.currentTime - targetSeekTime) > 0.03) {
+      video.currentTime = targetSeekTime;
+    }
   }
+
+  // Draw video frame if metadata/dimensions exist (videoWidth > 0 or readyState >= 1)
+  if (video.videoWidth > 0 || video.readyState >= 1) {
+    try {
+      ctx.drawImage(video, -w / 2, -h / 2, w, h);
+    } catch {
+      drawVideoPlaceholder(ctx, w, h);
+    }
+  } else {
+    drawVideoPlaceholder(ctx, w, h);
+  }
+}
+
+function drawVideoPlaceholder(ctx: CanvasRenderingContext2D, w: number, h: number) {
+  ctx.fillStyle = '#181b24';
+  ctx.fillRect(-w / 2, -h / 2, w, h);
+  ctx.strokeStyle = '#6366f1';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(-w / 2, -h / 2, w, h);
 }
 
 function renderMotionPathTrail(ctx: CanvasRenderingContext2D, points: { x: number; y: number }[]) {

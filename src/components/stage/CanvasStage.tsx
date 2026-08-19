@@ -108,11 +108,12 @@ export const CanvasStage: React.FC = () => {
       canvasSettings: canvas,
       layers,
       currentTime,
+      isPlaying,
       selectedLayerIds,
       showGizmos: true,
       showSafeAreas,
     });
-  }, [canvas, layers, currentTime, selectedLayerIds, showSafeAreas]);
+  }, [canvas, layers, currentTime, isPlaying, selectedLayerIds, showSafeAreas]);
 
   // Screen to Canvas Coordinates
   const screenToCanvasCoords = useCallback(
