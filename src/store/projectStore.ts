@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { CanvasSettings, ResolutionPreset, RESOLUTION_PRESETS, WorkspaceLayout, ActiveTool } from '../types/project';
+import { CanvasSettings, ResolutionPreset, RESOLUTION_PRESETS, WorkspaceLayout, ActiveTool, StageMode, ThreeDViewSettings } from '../types/project';
 import { Layer, ShapeType, TextProperties, LayerStyle, VideoProperties, MotionPathPoint } from '../types/layer';
 import { MotionPresetType, AnimatableProperty, Keyframe, EasingType } from '../types/animation';
 import { PROJECT_TEMPLATES } from '../templates/projectTemplates';
@@ -14,6 +14,8 @@ interface ProjectState {
   // Workspace & Tools
   workspace: WorkspaceLayout;
   activeTool: ActiveTool;
+  stageMode: StageMode;
+  threeDConfig: ThreeDViewSettings;
   isRecordingMotionPath: boolean;
   recordingLayerId: string | null;
 
@@ -47,6 +49,9 @@ interface ProjectState {
   setResolutionPreset: (preset: ResolutionPreset) => void;
   setWorkspace: (ws: WorkspaceLayout) => void;
   setActiveTool: (tool: ActiveTool) => void;
+  setStageMode: (mode: StageMode) => void;
+  setThreeDConfig: (config: Partial<ThreeDViewSettings>) => void;
+  resetThreeDView: () => void;
 
   // Playhead & Shuttle actions
   setCurrentTime: (time: number) => void;
@@ -136,6 +141,20 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   workspace: SAVED_WORKSPACE,
   activeTool: 'select',
+  stageMode: '2d',
+  threeDConfig: {
+    rotateX: 35,
+    rotateY: -35,
+    zoom: 0.8,
+    panX: 0,
+    panY: 0,
+    layerSpacing: 70,
+    perspective: 1200,
+    showWireframes: true,
+    showDepthLines: true,
+    showLayerBadges: true,
+    autoRotate: false,
+  },
   isRecordingMotionPath: false,
   recordingLayerId: null,
 
@@ -160,6 +179,26 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   isTemplatesModalOpen: false,
 
   setProjectName: (name) => set({ projectName: name }),
+
+  setStageMode: (mode) => set({ stageMode: mode }),
+  setThreeDConfig: (config) =>
+    set((state) => ({ threeDConfig: { ...state.threeDConfig, ...config } })),
+  resetThreeDView: () =>
+    set({
+      threeDConfig: {
+        rotateX: 35,
+        rotateY: -35,
+        zoom: 0.8,
+        panX: 0,
+        panY: 0,
+        layerSpacing: 70,
+        perspective: 1200,
+        showWireframes: true,
+        showDepthLines: true,
+        showLayerBadges: true,
+        autoRotate: false,
+      },
+    }),
 
   setCanvasSettings: (settings) => {
     get().saveHistory();

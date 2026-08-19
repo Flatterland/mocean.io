@@ -6,6 +6,22 @@ export type WorkspaceLayout = 'default' | 'timeline' | 'typography' | 'minimal';
 
 export type ActiveTool = 'select' | 'razor' | 'hand' | 'zoom' | 'motion-record';
 
+export type StageMode = '2d' | '3d';
+
+export interface ThreeDViewSettings {
+  rotateX: number; // degrees
+  rotateY: number; // degrees
+  zoom: number; // multiplier
+  panX: number;
+  panY: number;
+  layerSpacing: number; // px separation along Z
+  perspective: number; // px
+  showWireframes: boolean;
+  showDepthLines: boolean;
+  showLayerBadges: boolean;
+  autoRotate: boolean;
+}
+
 export interface CanvasSettings {
   width: number;
   height: number;

@@ -114,6 +114,36 @@ export function renderFrame(options: RenderOptions) {
   ctx.restore();
 }
 
+export function renderSingleLayer(
+  ctx: CanvasRenderingContext2D,
+  layer: Layer,
+  currentTime: number,
+  isPlaying: boolean = false
+) {
+  const state = computeLayerState(layer, currentTime);
+  if (!state.isActive || state.style.opacity <= 0) return;
+
+  const w = state.transform.width;
+  const h = state.transform.height;
+
+  ctx.save();
+  ctx.clearRect(0, 0, w, h);
+  ctx.translate(w / 2, h / 2);
+  const localState: AnimatedLayerState = {
+    ...state,
+    transform: {
+      ...state.transform,
+      x: 0,
+      y: 0,
+      rotation: 0,
+      scaleX: 1,
+      scaleY: 1,
+    },
+  };
+  renderLayer(ctx, localState, currentTime, isPlaying);
+  ctx.restore();
+}
+
 function renderLayer(
   ctx: CanvasRenderingContext2D,
   state: AnimatedLayerState,
