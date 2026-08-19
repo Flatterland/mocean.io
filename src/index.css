@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-[#090a0f] text-slate-100 antialiased overflow-hidden select-none font-sans;
+  }
+}
+
+/* Custom Sleek Scrollbars */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #0d0e14;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #222734;
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #374151;
+}
+
+/* Range input styling */
+input[type="range"] {
+  height: 4px;
+}
