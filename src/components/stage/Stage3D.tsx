@@ -31,8 +31,22 @@ const SingleLayerCanvas: React.FC<SingleLayerCanvasProps> = ({ layer, currentTim
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const state = computeLayerState(layer, currentTime);
 
-  const width = Math.max(10, Math.round(state.transform.width));
-  const height = Math.max(10, Math.round(state.transform.height));
+  // Dynamic padding to prevent clipping of long text, shadows, blur, and kinetic animations
+  const paddingX = Math.max(160, (state.style.shadowBlur || 0) * 3 + (state.style.blur || 0) * 3);
+  const paddingY = Math.max(100, (state.style.shadowBlur || 0) * 3 + (state.style.blur || 0) * 3);
+
+  let baseW = state.transform.width;
+  let baseH = state.transform.height;
+
+  if (layer.type === 'text' && layer.text) {
+    const approxTextW =
+      layer.text.text.length * (layer.text.fontSize * 0.75) +
+      (layer.text.letterSpacing || 0) * layer.text.text.length;
+    baseW = Math.max(baseW, approxTextW);
+  }
+
+  const canvasWidth = Math.max(20, Math.round(baseW + paddingX * 2));
+  const canvasHeight = Math.max(20, Math.round(baseH + paddingY * 2));
 
   useEffect(() => {
     const cvs = canvasRef.current;
@@ -40,17 +54,21 @@ const SingleLayerCanvas: React.FC<SingleLayerCanvasProps> = ({ layer, currentTim
     const ctx = cvs.getContext('2d');
     if (!ctx) return;
 
-    renderSingleLayer(ctx, layer, currentTime, isPlaying);
-  }, [layer, currentTime, isPlaying, width, height]);
+    renderSingleLayer(ctx, layer, currentTime, isPlaying, canvasWidth, canvasHeight);
+  }, [layer, currentTime, isPlaying, canvasWidth, canvasHeight]);
 
   return (
     <canvas
       ref={canvasRef}
-      width={width}
-      height={height}
+      width={canvasWidth}
+      height={canvasHeight}
       style={{
-        width: `${width}px`,
-        height: `${height}px`,
+        width: `${canvasWidth}px`,
+        height: `${canvasHeight}px`,
+        position: 'absolute',
+        left: '50%',
+        top: '50%',
+        transform: 'translate(-50%, -50%)',
       }}
       className="block pointer-events-none"
     />

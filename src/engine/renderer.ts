@@ -118,13 +118,15 @@ export function renderSingleLayer(
   ctx: CanvasRenderingContext2D,
   layer: Layer,
   currentTime: number,
-  isPlaying: boolean = false
+  isPlaying: boolean = false,
+  canvasWidth?: number,
+  canvasHeight?: number
 ) {
   const state = computeLayerState(layer, currentTime);
   if (!state.isActive || state.style.opacity <= 0) return;
 
-  const w = state.transform.width;
-  const h = state.transform.height;
+  const w = canvasWidth || state.transform.width;
+  const h = canvasHeight || state.transform.height;
 
   ctx.save();
   ctx.clearRect(0, 0, w, h);
