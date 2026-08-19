@@ -16,6 +16,7 @@ export interface ThreeDViewSettings {
   panY: number;
   layerSpacing: number; // px separation along Z
   perspective: number; // px
+  projectionMode: 'perspective' | 'orthographic';
   showWireframes: boolean;
   showDepthLines: boolean;
   showLayerBadges: boolean;

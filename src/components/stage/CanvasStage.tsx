@@ -52,50 +52,6 @@ export const CanvasStage: React.FC = () => {
   const [isPanning, setIsPanning] = useState(false);
   const panStartRef = useRef<Point>({ x: 0, y: 0 });
 
-  // Playback Loop with Shuttle Speed (1x, 2x, 4x, -1x, -2x, -4x)
-  useEffect(() => {
-    if (!isPlaying) return;
-
-    let lastTime = performance.now();
-    let animationFrameId: number;
-
-    const tick = (now: number) => {
-      const delta = ((now - lastTime) / 1000) * playbackSpeed;
-      lastTime = now;
-
-      const store = useProjectStore.getState();
-      let nextTime = store.currentTime + delta;
-
-      if (nextTime >= store.canvas.duration) {
-        if (store.isLooping) {
-          nextTime = 0;
-        } else {
-          nextTime = store.canvas.duration;
-          store.setIsPlaying(false);
-        }
-      } else if (nextTime <= 0) {
-        if (store.isLooping) {
-          nextTime = store.canvas.duration;
-        } else {
-          nextTime = 0;
-          store.setIsPlaying(false);
-        }
-      }
-
-      store.setCurrentTime(nextTime);
-
-      if (store.isPlaying) {
-        animationFrameId = requestAnimationFrame(tick);
-      }
-    };
-
-    animationFrameId = requestAnimationFrame(tick);
-
-    return () => {
-      cancelAnimationFrame(animationFrameId);
-    };
-  }, [isPlaying, playbackSpeed]);
-
   // Main Render Frame Trigger
   useEffect(() => {
     const canvasEl = canvasRef.current;

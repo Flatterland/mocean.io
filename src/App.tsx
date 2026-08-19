@@ -12,6 +12,8 @@ import { useProjectStore } from './store/projectStore';
 export function App() {
   const {
     workspace,
+    isPlaying,
+    playbackSpeed,
     togglePlay,
     shuttleForward,
     shuttleReverse,
@@ -27,6 +29,50 @@ export function App() {
     setMarkIn,
     setMarkOut,
   } = useProjectStore();
+
+  // Global Playback Loop with Shuttle Speed (1x, 2x, 4x, -1x, -2x, -4x)
+  useEffect(() => {
+    if (!isPlaying) return;
+
+    let lastTime = performance.now();
+    let animationFrameId: number;
+
+    const tick = (now: number) => {
+      const delta = ((now - lastTime) / 1000) * playbackSpeed;
+      lastTime = now;
+
+      const store = useProjectStore.getState();
+      let nextTime = store.currentTime + delta;
+
+      if (nextTime >= store.canvas.duration) {
+        if (store.isLooping) {
+          nextTime = 0;
+        } else {
+          nextTime = store.canvas.duration;
+          store.setIsPlaying(false);
+        }
+      } else if (nextTime <= 0) {
+        if (store.isLooping) {
+          nextTime = store.canvas.duration;
+        } else {
+          nextTime = 0;
+          store.setIsPlaying(false);
+        }
+      }
+
+      store.setCurrentTime(nextTime);
+
+      if (store.isPlaying) {
+        animationFrameId = requestAnimationFrame(tick);
+      }
+    };
+
+    animationFrameId = requestAnimationFrame(tick);
+
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+    };
+  }, [isPlaying, playbackSpeed]);
 
   // Premiere-like Global Keyboard Shortcuts
   useEffect(() => {

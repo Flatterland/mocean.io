@@ -28,14 +28,19 @@ export interface LayerStyle {
   shadowOffsetX: number;
   shadowOffsetY: number;
   blendMode: GlobalCompositeOperation;
+  extrusionDepth?: number; // 3D thickness / slab depth in px (e.g. 0 to 60)
+  extrusionColor?: string; // 3D side wall bevel color
 }
 
 export interface Transform {
   x: number; // Center X in canvas coordinates
   y: number; // Center Y in canvas coordinates
+  z?: number; // 3D depth offset in canvas Z-coordinates (default 0)
   scaleX: number; // default 1
   scaleY: number; // default 1
-  rotation: number; // in degrees
+  rotation: number; // in degrees (Z-rotation)
+  rotateX?: number; // 3D pitch tilt in degrees (default 0)
+  rotateY?: number; // 3D yaw tilt in degrees (default 0)
   anchorX: number; // 0.5 is center
   anchorY: number; // 0.5 is center
   width: number;

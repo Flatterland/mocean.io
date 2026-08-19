@@ -108,9 +108,13 @@ export const RightInspector: React.FC = () => {
   const keyframableProps: { prop: AnimatableProperty; label: string; currentVal: number }[] = [
     { prop: 'x', label: 'Position X', currentVal: transform.x },
     { prop: 'y', label: 'Position Y', currentVal: transform.y },
+    { prop: 'z', label: '3D Depth Z', currentVal: transform.z || 0 },
     { prop: 'scaleX', label: 'Scale', currentVal: transform.scaleX },
-    { prop: 'rotation', label: 'Rotation', currentVal: transform.rotation },
+    { prop: 'rotation', label: 'Rotation Z', currentVal: transform.rotation },
+    { prop: 'rotateX', label: '3D Tilt X', currentVal: transform.rotateX || 0 },
+    { prop: 'rotateY', label: '3D Tilt Y', currentVal: transform.rotateY || 0 },
     { prop: 'opacity', label: 'Opacity', currentVal: style.opacity },
+    { prop: 'extrusionDepth', label: '3D Extrusion', currentVal: style.extrusionDepth || 0 },
   ];
 
   return (
@@ -518,6 +522,98 @@ export const RightInspector: React.FC = () => {
                   })
                 }
                 className="w-full bg-[#181b24] border border-[#222734] rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* --- SECTION: 3D SPATIAL & DEPTH EXTRUSION --- */}
+        <div className="space-y-3 p-3.5 rounded-xl bg-gradient-to-br from-indigo-950/30 via-[#181b24] to-[#181b24] border border-indigo-500/30">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-indigo-300 flex items-center gap-1.5">
+              <span>3D Spatial & Extrusion</span>
+            </span>
+            <span className="text-[9px] font-extrabold bg-indigo-500/20 text-indigo-300 px-1.5 py-0.5 rounded border border-indigo-400/30">
+              TRUE 3D
+            </span>
+          </div>
+
+          <div className="space-y-3 pt-1">
+            {/* Z-Depth Offset */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-slate-300">Z-Depth Offset (Parallax)</span>
+                <span className="font-mono text-indigo-400">{transform.z || 0}px</span>
+              </div>
+              <input
+                type="range"
+                min="-200"
+                max="300"
+                step="5"
+                value={transform.z || 0}
+                onChange={(e) =>
+                  updateLayer(selectedLayer.id, {
+                    transform: { ...transform, z: parseInt(e.target.value) },
+                  })
+                }
+                className="w-full accent-indigo-500 cursor-pointer"
+              />
+            </div>
+
+            {/* 3D X & Y Pitch/Yaw Tilts */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <label className="text-[11px] text-slate-400">Tilt X (Pitch: {transform.rotateX || 0}°)</label>
+                <input
+                  type="range"
+                  min="-75"
+                  max="75"
+                  step="5"
+                  value={transform.rotateX || 0}
+                  onChange={(e) =>
+                    updateLayer(selectedLayer.id, {
+                      transform: { ...transform, rotateX: parseInt(e.target.value) },
+                    })
+                  }
+                  className="w-full accent-indigo-500 cursor-pointer"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] text-slate-400">Tilt Y (Yaw: {transform.rotateY || 0}°)</label>
+                <input
+                  type="range"
+                  min="-75"
+                  max="75"
+                  step="5"
+                  value={transform.rotateY || 0}
+                  onChange={(e) =>
+                    updateLayer(selectedLayer.id, {
+                      transform: { ...transform, rotateY: parseInt(e.target.value) },
+                    })
+                  }
+                  className="w-full accent-indigo-500 cursor-pointer"
+                />
+              </div>
+            </div>
+
+            {/* 3D Physical Extrusion Depth */}
+            <div className="space-y-1 pt-1 border-t border-[#222734]">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-slate-300">3D Slab Extrusion Depth</span>
+                <span className="font-mono text-cyan-400">{style.extrusionDepth || 0}px</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="60"
+                step="2"
+                value={style.extrusionDepth || 0}
+                onChange={(e) =>
+                  updateLayer(selectedLayer.id, {
+                    style: { ...style, extrusionDepth: parseInt(e.target.value) },
+                  })
+                }
+                className="w-full accent-cyan-500 cursor-pointer"
               />
             </div>
           </div>

@@ -72,11 +72,15 @@ export interface MotionPresetConfig {
 export type AnimatableProperty =
   | 'x'
   | 'y'
+  | 'z'
   | 'scaleX'
   | 'scaleY'
   | 'rotation'
+  | 'rotateX'
+  | 'rotateY'
   | 'opacity'
-  | 'blur';
+  | 'blur'
+  | 'extrusionDepth';
 
 export interface Keyframe {
   id: string;

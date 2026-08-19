@@ -130,6 +130,9 @@ export function computeLayerState(layer: Layer, currentTime: number): AnimatedLa
         case 'y':
           transform.y = val;
           break;
+        case 'z':
+          transform.z = val;
+          break;
         case 'scaleX':
           transform.scaleX = val;
           break;
@@ -139,11 +142,20 @@ export function computeLayerState(layer: Layer, currentTime: number): AnimatedLa
         case 'rotation':
           transform.rotation = val;
           break;
+        case 'rotateX':
+          transform.rotateX = val;
+          break;
+        case 'rotateY':
+          transform.rotateY = val;
+          break;
         case 'opacity':
           style.opacity = val;
           break;
         case 'blur':
           style.blur = val;
+          break;
+        case 'extrusionDepth':
+          style.extrusionDepth = val;
           break;
         default:
           break;
