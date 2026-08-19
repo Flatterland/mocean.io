@@ -6,7 +6,7 @@ import { renderFrame } from './renderer';
 export interface ExportProgress {
   currentFrame: number;
   totalFrames: number;
-  progress: number; // 0 to 1
+  progress: number;
   fps: number;
   estimatedSecondsLeft: number;
   previewCanvas?: HTMLCanvasElement;
@@ -29,30 +29,28 @@ export class MoceanExporter {
   ): Promise<Blob> {
     this.isCancelled = false;
 
-    const width = exportSettings.width;
-    const height = exportSettings.height;
-    const fps = exportSettings.fps;
+    // Enforce even dimensions required by H.264 video encoders
+    const width = Math.max(2, Math.floor(exportSettings.width / 2) * 2);
+    const height = Math.max(2, Math.floor(exportSettings.height / 2) * 2);
+    const fps = Math.max(1, Math.min(60, exportSettings.fps || 30));
     const duration = canvasSettings.duration;
     const totalFrames = Math.max(1, Math.round(duration * fps));
 
-    // Create offscreen rendering canvas at full export resolution (e.g. 3840x2160)
+    // Create rendering canvas
     const renderCanvas = document.createElement('canvas');
     renderCanvas.width = width;
     renderCanvas.height = height;
-    const ctx = renderCanvas.getContext('2d', { alpha: false, desynchronized: true })!;
+    const ctx = renderCanvas.getContext('2d', { alpha: false, willReadFrequently: false })!;
 
-    // Scale canvasSettings dimensions for renderer
     const scaledCanvasSettings: CanvasSettings = {
       ...canvasSettings,
       width,
       height,
     };
 
-    // Calculate scale factor relative to project base dimensions
     const scaleFactorX = width / canvasSettings.width;
     const scaleFactorY = height / canvasSettings.height;
 
-    // Scale layers for high-res export
     const exportLayers: Layer[] = layers.map((layer) => ({
       ...layer,
       transform: {
@@ -77,28 +75,34 @@ export class MoceanExporter {
       },
     }));
 
-    // Check if WebCodecs is available
+    // Try WebCodecs first if available
     if (typeof window !== 'undefined' && 'VideoEncoder' in window) {
-      return this.exportWithWebCodecs(
-        renderCanvas,
-        ctx,
-        scaledCanvasSettings,
-        exportSettings,
-        exportLayers,
-        totalFrames,
-        onProgress
-      );
-    } else {
-      return this.exportWithMediaRecorder(
-        renderCanvas,
-        ctx,
-        scaledCanvasSettings,
-        exportSettings,
-        exportLayers,
-        totalFrames,
-        onProgress
-      );
+      try {
+        return await this.exportWithWebCodecs(
+          renderCanvas,
+          ctx,
+          scaledCanvasSettings,
+          { ...exportSettings, width, height, fps },
+          exportLayers,
+          totalFrames,
+          onProgress
+        );
+      } catch (err: any) {
+        if (this.isCancelled) throw err;
+        console.warn('WebCodecs export failed, falling back to MediaRecorder:', err);
+      }
     }
+
+    // Fallback to MediaRecorder
+    return this.exportWithMediaRecorder(
+      renderCanvas,
+      ctx,
+      scaledCanvasSettings,
+      { ...exportSettings, width, height, fps },
+      exportLayers,
+      totalFrames,
+      onProgress
+    );
   }
 
   private async exportWithWebCodecs(
@@ -112,40 +116,80 @@ export class MoceanExporter {
   ): Promise<Blob> {
     const { width, height, fps, bitrateMbps } = exportSettings;
 
-    // Configure MP4 Muxer
+    // Determine supported encoder configuration
+    const candidateCodecs = [
+      { codecString: 'avc1.640033', muxerCodec: 'avc' as const }, // High 5.1 (4K)
+      { codecString: 'avc1.640028', muxerCodec: 'avc' as const }, // High 4.0
+      { codecString: 'avc1.4d002a', muxerCodec: 'avc' as const }, // Main 4.2
+      { codecString: 'avc1.42001f', muxerCodec: 'avc' as const }, // Baseline 3.1
+      { codecString: 'avc1.42001e', muxerCodec: 'avc' as const },
+      { codecString: 'vp09.00.10.08', muxerCodec: 'vp9' as const }, // VP9
+    ];
+
+    let selectedConfig: { codecString: string; muxerCodec: 'avc' | 'vp9' } | null = null;
+
+    for (const candidate of candidateCodecs) {
+      try {
+        const support = await VideoEncoder.isConfigSupported({
+          codec: candidate.codecString,
+          width,
+          height,
+          bitrate: (bitrateMbps || 30) * 1_000_000,
+          framerate: fps,
+        });
+        if (support && support.supported) {
+          selectedConfig = candidate;
+          break;
+        }
+      } catch {
+        // Continue checking next candidate
+      }
+    }
+
+    // Default fallback to standard avc1.4d002a if isConfigSupported returns empty
+    if (!selectedConfig) {
+      selectedConfig = {
+        codecString: width >= 3840 ? 'avc1.640033' : 'avc1.4d002a',
+        muxerCodec: 'avc',
+      };
+    }
+
+    const target = new ArrayBufferTarget();
     const muxer = new Muxer({
-      target: new ArrayBufferTarget(),
+      target,
       video: {
-        codec: 'avc',
+        codec: selectedConfig.muxerCodec,
         width,
         height,
       },
       fastStart: 'in-memory',
+      firstTimestampBehavior: 'offset',
     });
 
     let encoderError: Error | null = null;
 
-    // Determine appropriate H.264 profile string
-    // avc1.640033 = High Profile, Level 5.1 (supports 4K 30/60FPS)
-    // avc1.4d002a = Main Profile, Level 4.2 (1080p)
-    const codecString = width >= 3840 ? 'avc1.640033' : 'avc1.4d002a';
-
     const videoEncoder = new VideoEncoder({
-      output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+      output: (chunk, meta) => {
+        try {
+          muxer.addVideoChunk(chunk, meta);
+        } catch (e: any) {
+          encoderError = e;
+          console.error('Muxer chunk error:', e);
+        }
+      },
       error: (e) => {
         encoderError = e;
-        console.error('WebCodecs VideoEncoder Error:', e);
+        console.error('VideoEncoder error:', e);
       },
     });
 
     await videoEncoder.configure({
-      codec: codecString,
+      codec: selectedConfig.codecString,
       width,
       height,
       bitrate: (bitrateMbps || 30) * 1_000_000,
       framerate: fps,
       hardwareAcceleration: 'prefer-hardware',
-      avc: { format: 'avc' },
     });
 
     const startTime = performance.now();
@@ -174,7 +218,6 @@ export class MoceanExporter {
         showSafeAreas: false,
       });
 
-      // Construct VideoFrame
       const timestampMicros = Math.round(frameIndex * frameMicros);
       const videoFrame = new VideoFrame(renderCanvas, {
         timestamp: timestampMicros,
@@ -185,12 +228,13 @@ export class MoceanExporter {
       videoEncoder.encode(videoFrame, { keyFrame: isKeyFrame });
       videoFrame.close();
 
-      // Yield event loop occasionally to keep UI responsive
-      if (frameIndex % 5 === 0) {
+      // Drain encode queue if backlog grows to avoid OOM
+      if (videoEncoder.encodeQueueSize > 4) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      } else if (frameIndex % 8 === 0) {
         await new Promise((resolve) => setTimeout(resolve, 0));
       }
 
-      // Progress reporting
       if (onProgress) {
         const elapsedSec = (performance.now() - startTime) / 1000;
         const framesDone = frameIndex + 1;
@@ -213,7 +257,7 @@ export class MoceanExporter {
     videoEncoder.close();
     muxer.finalize();
 
-    return new Blob([muxer.target.buffer], { type: 'video/mp4' });
+    return new Blob([target.buffer], { type: 'video/mp4' });
   }
 
   private async exportWithMediaRecorder(
@@ -227,7 +271,10 @@ export class MoceanExporter {
   ): Promise<Blob> {
     const { fps } = exportSettings;
     const stream = renderCanvas.captureStream(fps);
-    const mimeType = MediaRecorder.isTypeSupported('video/mp4')
+
+    const mimeType = MediaRecorder.isTypeSupported('video/mp4;codecs=avc1')
+      ? 'video/mp4;codecs=avc1'
+      : MediaRecorder.isTypeSupported('video/mp4')
       ? 'video/mp4'
       : MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
       ? 'video/webm;codecs=vp9'
@@ -243,10 +290,11 @@ export class MoceanExporter {
       if (e.data && e.data.size > 0) chunks.push(e.data);
     };
 
-    const recordPromise = new Promise<Blob>((resolve) => {
+    const recordPromise = new Promise<Blob>((resolve, reject) => {
       recorder.onstop = () => {
-        resolve(new Blob(chunks, { type: mimeType }));
+        resolve(new Blob(chunks, { type: mimeType.split(';')[0] }));
       };
+      recorder.onerror = (e) => reject(e);
     });
 
     recorder.start();
@@ -255,7 +303,7 @@ export class MoceanExporter {
     for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
       if (this.isCancelled) {
         recorder.stop();
-        throw new Error('Export cancelled');
+        throw new Error('Export cancelled by user');
       }
 
       const currentTime = frameIndex / fps;
