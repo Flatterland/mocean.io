@@ -486,13 +486,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         shadowBlur: 25,
       },
       animations: {
-        inPreset: 'image_drop_bounce',
-        inDuration: 0.6,
+        inDuration: 0.5,
         inStagger: 0,
+        outDuration: 0.5,
         loopSpeed: 1,
         loopIntensity: 1,
-        outPreset: 'text_out_fade_down',
-        outDuration: 0.5,
       },
       video: {
         src,

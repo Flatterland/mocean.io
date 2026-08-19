@@ -67,11 +67,14 @@ export const Viewport: React.FC = () => {
 
         <button
           onClick={() => {
-            setViewportZoom(0.7);
+            const fitW = (dimensions.width - 80) / canvas.width;
+            const fitH = (dimensions.height - 80) / canvas.height;
+            const bestZoom = Math.max(0.1, Math.min(1.2, Math.min(fitW, fitH)));
+            setViewportZoom(Math.round(bestZoom * 100) / 100);
             setViewportPan({ x: 0, y: 0 });
           }}
           className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded transition-colors"
-          title="Reset View"
+          title="Reset View / Fit to Screen"
         >
           <Maximize className="w-3.5 h-3.5" />
         </button>

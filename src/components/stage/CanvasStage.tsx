@@ -331,7 +331,7 @@ export const CanvasStage: React.FC = () => {
     >
       {/* Canvas Viewport Box */}
       <div
-        className="relative shadow-2xl transition-transform ease-out"
+        className="relative shadow-2xl transition-transform ease-out shrink-0"
         style={{
           width: canvas.width * viewportZoom,
           height: canvas.height * viewportZoom,
@@ -343,7 +343,12 @@ export const CanvasStage: React.FC = () => {
           ref={canvasRef}
           width={canvas.width}
           height={canvas.height}
-          className="w-full h-full block rounded-sm bg-[#090a0f]"
+          style={{
+            width: '100%',
+            height: '100%',
+            aspectRatio: `${canvas.width} / ${canvas.height}`,
+          }}
+          className="block rounded-sm bg-[#090a0f]"
         />
       </div>
     </div>

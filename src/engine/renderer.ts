@@ -15,7 +15,9 @@ export function getCachedImage(src: string): HTMLImageElement | null {
     return img.complete ? img : null;
   }
   const img = new Image();
-  img.crossOrigin = 'anonymous';
+  if (src.startsWith('http://') || src.startsWith('https://')) {
+    img.crossOrigin = 'anonymous';
+  }
   img.src = src;
   imageCache.set(src, img);
   return null;
@@ -26,11 +28,14 @@ export function getCachedVideo(src: string): HTMLVideoElement {
     return videoCache.get(src)!;
   }
   const video = document.createElement('video');
-  video.crossOrigin = 'anonymous';
+  if (src.startsWith('http://') || src.startsWith('https://')) {
+    video.crossOrigin = 'anonymous';
+  }
   video.src = src;
   video.muted = true;
   video.playsInline = true;
   video.preload = 'auto';
+  video.autoplay = false;
   videoCache.set(src, video);
   return video;
 }
@@ -319,10 +324,11 @@ function renderVideoLayer(
 
   if (isPlaying) {
     if (video.paused) {
+      video.playbackRate = layer.video.playbackRate || 1.0;
       video.play().catch(() => {});
     }
-    // Only adjust seek time if video drifted by > 0.25s to avoid continuous seeking stutter
-    if (Math.abs(video.currentTime - targetSeekTime) > 0.25) {
+    // Only adjust seek time if video jumped/drifted by more than 0.6s to avoid seeking stutter
+    if (Math.abs(video.currentTime - targetSeekTime) > 0.6) {
       video.currentTime = targetSeekTime;
     }
   } else {
@@ -330,7 +336,7 @@ function renderVideoLayer(
       video.pause();
     }
     // Smooth scrubbing when paused
-    if (Math.abs(video.currentTime - targetSeekTime) > 0.03) {
+    if (Math.abs(video.currentTime - targetSeekTime) > 0.02) {
       video.currentTime = targetSeekTime;
     }
   }
