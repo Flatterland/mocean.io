@@ -29,14 +29,13 @@ export class MoceanExporter {
   ): Promise<Blob> {
     this.isCancelled = false;
 
-    // Enforce even dimensions required by H.264 video encoders
+    // Strict even dimensions
     const width = Math.max(2, Math.floor(exportSettings.width / 2) * 2);
     const height = Math.max(2, Math.floor(exportSettings.height / 2) * 2);
     const fps = Math.max(1, Math.min(60, exportSettings.fps || 30));
     const duration = canvasSettings.duration;
     const totalFrames = Math.max(1, Math.round(duration * fps));
 
-    // Create rendering canvas
     const renderCanvas = document.createElement('canvas');
     renderCanvas.width = width;
     renderCanvas.height = height;
@@ -75,7 +74,6 @@ export class MoceanExporter {
       },
     }));
 
-    // Try WebCodecs first if available
     if (typeof window !== 'undefined' && 'VideoEncoder' in window) {
       try {
         return await this.exportWithWebCodecs(
@@ -93,7 +91,6 @@ export class MoceanExporter {
       }
     }
 
-    // Fallback to MediaRecorder
     return this.exportWithMediaRecorder(
       renderCanvas,
       ctx,
@@ -115,15 +112,16 @@ export class MoceanExporter {
     onProgress?: ExportProgressCallback
   ): Promise<Blob> {
     const { width, height, fps, bitrateMbps } = exportSettings;
+    const frameDurationMicros = Math.round(1_000_000 / fps);
 
     // Determine supported encoder configuration
     const candidateCodecs = [
-      { codecString: 'avc1.640033', muxerCodec: 'avc' as const }, // High 5.1 (4K)
-      { codecString: 'avc1.640028', muxerCodec: 'avc' as const }, // High 4.0
-      { codecString: 'avc1.4d002a', muxerCodec: 'avc' as const }, // Main 4.2
-      { codecString: 'avc1.42001f', muxerCodec: 'avc' as const }, // Baseline 3.1
+      { codecString: 'avc1.640033', muxerCodec: 'avc' as const },
+      { codecString: 'avc1.640028', muxerCodec: 'avc' as const },
+      { codecString: 'avc1.4d002a', muxerCodec: 'avc' as const },
+      { codecString: 'avc1.42001f', muxerCodec: 'avc' as const },
       { codecString: 'avc1.42001e', muxerCodec: 'avc' as const },
-      { codecString: 'vp09.00.10.08', muxerCodec: 'vp9' as const }, // VP9
+      { codecString: 'vp09.00.10.08', muxerCodec: 'vp9' as const },
     ];
 
     let selectedConfig: { codecString: string; muxerCodec: 'avc' | 'vp9' } | null = null;
@@ -142,11 +140,10 @@ export class MoceanExporter {
           break;
         }
       } catch {
-        // Continue checking next candidate
+        // test next
       }
     }
 
-    // Default fallback to standard avc1.4d002a if isConfigSupported returns empty
     if (!selectedConfig) {
       selectedConfig = {
         codecString: width >= 3840 ? 'avc1.640033' : 'avc1.4d002a',
@@ -163,7 +160,7 @@ export class MoceanExporter {
         height,
       },
       fastStart: 'in-memory',
-      firstTimestampBehavior: 'offset',
+      firstTimestampBehavior: 'strict',
     });
 
     let encoderError: Error | null = null;
@@ -171,7 +168,20 @@ export class MoceanExporter {
     const videoEncoder = new VideoEncoder({
       output: (chunk, meta) => {
         try {
-          muxer.addVideoChunk(chunk, meta);
+          const data = new Uint8Array(chunk.byteLength);
+          chunk.copyTo(data);
+
+          // Crucial: WebCodecs VideoEncoder chunk.duration is often undefined/0.
+          // Explicitly supply frameDurationMicros so each frame has exact timestamp & duration in the MP4 timeline.
+          const durationMicros = chunk.duration && chunk.duration > 0 ? chunk.duration : frameDurationMicros;
+
+          muxer.addVideoChunkRaw(
+            data,
+            chunk.type,
+            chunk.timestamp,
+            durationMicros,
+            meta
+          );
         } catch (e: any) {
           encoderError = e;
           console.error('Muxer chunk error:', e);
@@ -193,7 +203,6 @@ export class MoceanExporter {
     });
 
     const startTime = performance.now();
-    const frameMicros = 1_000_000 / fps;
 
     for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
       if (this.isCancelled) {
@@ -207,7 +216,7 @@ export class MoceanExporter {
 
       const currentTime = frameIndex / fps;
 
-      // Render frame deterministically
+      // Render frame deterministically at exact fractional second
       renderFrame({
         ctx,
         canvasSettings: scaledCanvasSettings,
@@ -218,17 +227,16 @@ export class MoceanExporter {
         showSafeAreas: false,
       });
 
-      const timestampMicros = Math.round(frameIndex * frameMicros);
+      const timestampMicros = Math.round(frameIndex * frameDurationMicros);
       const videoFrame = new VideoFrame(renderCanvas, {
         timestamp: timestampMicros,
-        duration: Math.round(frameMicros),
+        duration: frameDurationMicros,
       });
 
       const isKeyFrame = frameIndex % Math.min(30, fps) === 0;
       videoEncoder.encode(videoFrame, { keyFrame: isKeyFrame });
       videoFrame.close();
 
-      // Drain encode queue if backlog grows to avoid OOM
       if (videoEncoder.encodeQueueSize > 4) {
         await new Promise((resolve) => setTimeout(resolve, 10));
       } else if (frameIndex % 8 === 0) {
