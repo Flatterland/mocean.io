@@ -97,7 +97,7 @@ interface ProjectState {
 
   // Mouse Path Recording
   startMotionPathRecording: (layerId: string) => void;
-  addMotionPathPoint: (x: number, y: number, time: number) => void;
+  addMotionPathPoint: (x: number, y: number, time: number, z?: number) => void;
   finishMotionPathRecording: () => void;
   clearMotionPath: (layerId: string) => void;
 
@@ -758,7 +758,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     });
   },
 
-  addMotionPathPoint: (x, y, time) => {
+  addMotionPathPoint: (x, y, time, z) => {
     const { recordingLayerId } = get();
     if (!recordingLayerId) return;
 
@@ -767,7 +767,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         if (l.id !== recordingLayerId) return l;
 
         const existingPoints = l.animations.motionPath?.points || [];
-        const newPoint: MotionPathPoint = { x: Math.round(x), y: Math.round(y), time };
+        const newPoint: MotionPathPoint = {
+          x: Math.round(x),
+          y: Math.round(y),
+          z: z !== undefined ? Math.round(z) : undefined,
+          time,
+        };
 
         return {
           ...l,

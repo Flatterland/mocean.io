@@ -107,6 +107,7 @@ export interface AudioProperties {
 export interface MotionPathPoint {
   x: number;
   y: number;
+  z?: number; // 3D elevation / depth
   time: number; // relative to layer startTime
 }
 

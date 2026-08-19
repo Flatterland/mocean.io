@@ -92,6 +92,9 @@ export function computeLayerState(layer: Layer, currentTime: number): AnimatedLa
 
     transform.x = lerp(p0.x, p1.x, factor);
     transform.y = lerp(p0.y, p1.y, factor);
+    if (p0.z !== undefined || p1.z !== undefined) {
+      transform.z = lerp(p0.z || 0, p1.z || 0, factor);
+    }
   }
 
   // 2. EVALUATE CUSTOM PROPERTY KEYFRAMES
